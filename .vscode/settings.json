@@ -75,6 +75,9 @@
         "regex": "cpp",
         "scoped_allocator": "cpp",
         "shared_mutex": "cpp",
-        "ios": "cpp"
+        "ios": "cpp",
+        "span": "cpp",
+        "span_ext": "cpp",
+        "util": "cpp"
     }
 }

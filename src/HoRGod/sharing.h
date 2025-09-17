@@ -249,6 +249,52 @@ struct DummyShare {
   }
 };
 
+template <class R>
+struct PermShare {
+  std::array<vector<R>, 4> share_elements;
+  size_t length_;
+
+  PermShare() = default;
+
+  explicit PermShare(std::array<vector<R>, 4> share_elements, size_t length)
+      : share_elements(std::move(share_elements)) {
+    length_ = length;
+  }
+  
+  // 生成一个 [0, length_-1] 的随机置换
+  std::vector<R> random_permutation(emp::PRG& prg, size_t length_) {
+    // 1. 初始化序列 0,1,2,...,length_-1
+    std::vector<R> perm(length_);
+    for (size_t i = 0; i < length_; i++) {
+        perm[i] = static_cast<R>(i);
+    }
+
+    // 2. 用 prg 随机生成打乱顺序的随机数
+    //    这里我们用 Fisher-Yates 洗牌算法
+    for (size_t i = length_ - 1; i > 0; --i) {
+        uint32_t rand_val;
+        prg.random_data(&rand_val, sizeof(rand_val));
+        size_t j = rand_val % (i + 1); // 随机选择 [0, i]
+        std::swap(perm[i], perm[j]);
+    }
+    return perm;
+  }
+
+  void randomize(emp::PRG& prg) {
+    for (size_t i = 0; i < 4; i++) {
+      share_elements[i] = random_permutation(prg, length_);
+    }
+  }
+
+  // Access share elements.
+  // idx = i retreives value common with party having my_id + i + 1.
+  vector<R>& operator[](size_t idx) { return share_elements[idx]; }
+
+  vector<R> operator[](size_t idx) const { return share_elements[idx]; }
+
+  
+};
+
 template <>
 void ReplicatedShare<BoolRing>::randomize(emp::PRG& prg);
 
