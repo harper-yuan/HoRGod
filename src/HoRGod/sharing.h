@@ -303,4 +303,94 @@ DummyShare<BoolRing>::DummyShare(BoolRing secret, emp::PRG& prg);
 
 template <>
 void DummyShare<BoolRing>::randomize(emp::PRG& prg);
+
+template <class R>
+class PermutationShare {
+  // values_[i] will denote element common with party having my_id + i + 1.
+  std::array<std::vector<R>, 4> values_;
+
+ public:
+  PermutationShare() = default;
+  explicit PermutationShare(std::array<std::vector<R>, 4> values)
+      : values_{std::move(values)} {}
+  
+  std::vector<R>& operator[](size_t idx) { return values_.at(idx); }
+
+  std::vector<R> operator[](size_t idx) const { return values_.at(idx); }
+
+  [[nodiscard]] std::vector<R> sum() const { //返回5个随机值的和，秘密共享\beta = x + sum即可
+    std::vector<R> sum = values_[0];
+    for (size_t i = 1; i < 4; ++i) {
+      sum = composePermutations(values_[i], sum);
+    }
+    return sum;
+  }
+};
+
+template <class R>
+class PermutationDummyShare {
+  // values_[i] will denote element common with party having my_id + i + 1.
+  std::array<std::vector<R>, 5> values_;
+  uint64_t permutation_length_;
+
+ public:
+  PermutationDummyShare() = default;
+  explicit PermutationDummyShare(std::array<std::vector<R>, 5> values, uint64_t permutation_length)
+      : values_{std::move(values)} {
+    permutation_length_ = permutation_length;
+  }
+
+  explicit PermutationDummyShare(uint64_t permutation_length) {
+    permutation_length_ = permutation_length;
+  }
+
+  std::vector<R> generateRandomPermutation(emp::PRG& prg, uint64_t permutation_length) {
+    std::vector<R> permutation;
+    
+    // 创建初始序列 [0, 1, 2, ..., n-1]
+    for (int i = 0; i < permutation_length; ++i) {
+      permutation.push_back(i);
+    }
+    
+    // 使用 Fisher-Yates 洗牌算法
+    for (int i = permutation_length - 1; i > 0; --i) {
+        // 生成 [0, i] 范围内的随机数
+        R rand_val;
+        prg.random_data(&rand_val, sizeof(R));
+        int j = rand_val % (i + 1);
+        
+        // 交换元素
+        std::swap(permutation[i], permutation[j]);
+    }
+    return permutation;
+  }
+
+  void randomize(emp::PRG& prg) {
+    for(int i = 0; i < 5; i++) {
+      values_[i] = generateRandomPermutation(prg, permutation_length_);
+    }
+  }
+
+  [[nodiscard]] std::vector<R> secret() const { //返回5个随机值的和，秘密共享\beta = x + sum即可
+    std::vector<R> sum = values_[0];
+    for (size_t i = 1; i < 5; ++i) {
+      sum = composePermutations(values_[i], sum);
+    }
+    return sum;
+  }
+
+  PermutationShare <R> getRSS(size_t pid) {//返回对应的冗余秘密共享，对于pid=0，返回的共享值为1,2,3,4，即不包含0
+    pid = pid % 5;
+    std::array<std::vector<R>, 4> values;
+    size_t counter = 0;
+    for (size_t i = 0; i < 5; ++i) {
+      if (i != pid) {
+        values[counter] = values_[i];
+        counter++;
+      }
+    }
+    return PermutationShare<R>(values);
+  }
+};
+
 };  // namespace HoRGod

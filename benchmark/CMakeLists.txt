@@ -10,9 +10,11 @@ endmacro()
 
 add_benchmark(online_mpc)
 add_benchmark(online_nn)
+add_benchmark(online_perm)
 add_benchmark(offline_nn)
 add_benchmark(offline_mpc_tp)
 add_benchmark(offline_mpc_sub)
+add_benchmark(offline_perm)
 add_benchmark(sodo_gridlock_iter)
 
 add_custom_target(benchmarks)

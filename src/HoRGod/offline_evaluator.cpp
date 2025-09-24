@@ -784,6 +784,23 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
   return preproc;
 }
 
+std::array<vector<Ring>, 6> OfflineEvaluator::reshare_gen_random_vector(int pid, RandGenPool& rgen, int array_length) {
+  std::array<vector<Ring>, 6> result;
+  for(int j =  0; j < array_length; j++) {
+    Ring sum_temp = 0;
+    Ring temp = 10000;
+    for(int i = 0; i < 5; i++) {
+      // temp += i*i + 100*i;
+      rgen.getComplement(pid).random_data(&temp, sizeof(Ring));
+      // temp = temp % (1ULL<<8);
+      result[i].push_back(temp);
+      sum_temp += temp;
+    }
+    result[5].push_back(sum_temp);
+  }
+  return result;
+}
+
 PreprocCircuit<Ring> OfflineEvaluator::dummy(
     const utils::LevelOrderedCircuit& circ,
     const std::unordered_map<utils::wire_t, int>& input_pid_map,
@@ -1029,4 +1046,154 @@ PreprocCircuit<Ring> OfflineEvaluator::dummy(
   }
   return preproc;
 }
+
+
+PreprocCircuit_permutation<Ring> OfflineEvaluator::dummy_permutation(
+  const utils::LevelOrderedCircuit& circ,
+  const std::unordered_map<utils::wire_t, int>& input_pid_map,
+  size_t security_param, int pid, emp::PRG& prg, vector<Ring>& data_vector, vector<Ring>& permutation_vector) {
+
+  if(data_vector.size() != permutation_vector.size()) {
+    throw std::runtime_error("data vector size must be equal to permutation size.");
+  }
+  uint64_t nf =  data_vector.size();
+  int input_pid = INPUT_PERMUTATION;
+  vector<ReplicatedShare<Ring>> data_sharing_vec(nf);
+
+  //Firstly, share the data array
+  vector<Ring> mask_value_vec(nf);
+  for(uint64_t i = 0; i<nf ; i++) {
+    DummyShare<Ring> temp;
+    temp.randomize(prg);
+    Ring mask_value = 0;
+    
+    if (pid == INPUT_PERMUTATION) { //fix party INPUT_PERMUTATION inputs the data
+      mask_value = temp.secret(); //mask_value = 5个随机数的和
+    }
+    mask_value_vec[i] = mask_value;
+    data_sharing_vec[i] = temp.getRSS(pid);
+    // data_sharing_vec[i] = std::make_unique<PreprocInput<Ring>>( //预处理门保存RSS，即4个随机值，放在mask成员里面
+    //           temp.getRSS(pid), input_pid, mask_value);
+  }
+
+  //share the permutation
+  PermutationDummyShare<Ring> temp_dummy_perm_sharing(nf);
+  temp_dummy_perm_sharing.randomize(prg);
+  
+  PermutationShare<Ring> perm_sharing = temp_dummy_perm_sharing.getRSS(pid);
+  preprocg_ptr_t_perm<Ring> perm_share_ptr = std::make_unique<PreprocPermutation<Ring>>(
+                                                  temp_dummy_perm_sharing.getRSS(pid), 
+                                                  input_pid, 
+                                                  temp_dummy_perm_sharing.secret()
+                                              );
+  
+  //start to offline
+  vector<vector<Ring>> saved_beta(4);
+  for(int i = 0 ; i < 5; i++) {
+    size_t nbytes = sizeof(Ring) * nf;
+    if(pid != i)  { //另外四方使用自己的permutation，然后reshare
+      auto alpha_i = perm_sharing[idxFromSenderAndReceiver(pid, i)];
+      applyPermutation(alpha_i, data_sharing_vec);
+      
+      //reshare protocol
+      auto random_vector_array = reshare_gen_random_vector(pid, rgen_, nf);
+      saved_beta[idxFromSenderAndReceiver(pid, i)] = random_vector_array[5]; //每一方总共能存4个，而且是按照顺序存的。
+      for(int j = 0; j < nf; j++) {
+        for(int k= 0; k<5 ;k++) { //把随机数加到共享上去，5个共享
+          if(pid != k) { //k=5时参与方pid没有这个共享
+            data_sharing_vec[j][idxFromSenderAndReceiver(pid, k)] += random_vector_array[k][j];
+          }
+        }
+      }
+
+      auto [i_temp,j_temp,k_temp,l_temp] = findRemainingNumbers(i);
+      
+      if(pid == i_temp || pid == j_temp || pid == k_temp) {
+        vector<Ring> alpha_z_l;
+        for(int j = 0; j<nf; j++) {
+          alpha_z_l.push_back(data_sharing_vec[j][idxFromSenderAndReceiver(pid, l_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, j_temp, k_temp, i, nbytes, alpha_z_l.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<k_temp<<", "<<i<<endl;
+      }
+      if(pid == i_temp || pid == j_temp || pid == l_temp) {
+        vector<Ring> alpha_z_k;
+        for(int j = 0; j<nf; j++) {
+          alpha_z_k.push_back(data_sharing_vec[j][idxFromSenderAndReceiver(pid, k_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, j_temp, l_temp, i, nbytes, alpha_z_k.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<l_temp<<", "<<i<<endl;
+      }
+      if(pid == i_temp || pid == k_temp || pid == l_temp) {
+        vector<Ring> alpha_z_j;
+        for(int j = 0; j<nf; j++) {
+          alpha_z_j.push_back(data_sharing_vec[j][idxFromSenderAndReceiver(pid, j_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, k_temp, l_temp, i, nbytes, alpha_z_j.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<k_temp<<", "<<i<<endl;
+      }
+      if(pid == j_temp || pid == k_temp || pid == l_temp) {
+        vector<Ring> alpha_z_i;
+        for(int j = 0; j<nf; j++) {
+          alpha_z_i.push_back(data_sharing_vec[j][idxFromSenderAndReceiver(pid, i_temp)]);
+        }
+        jump_.jumpUpdate(j_temp, k_temp, l_temp, i, nbytes, alpha_z_i.data());
+        // std::cout<<j_temp<<", "<<k_temp<<", "<<l_temp<<", "<<i<<endl;
+      }
+    }
+    else { //接受消息，更新自己的alpha
+      auto [i_temp,j_temp,k_temp,l_temp] = findRemainingNumbers(pid);
+      jump_.jumpUpdate(i_temp, j_temp, k_temp, pid, nbytes, nullptr);
+      jump_.jumpUpdate(i_temp, j_temp, l_temp, pid, nbytes, nullptr);
+      jump_.jumpUpdate(i_temp, k_temp, l_temp, pid, nbytes, nullptr);
+      jump_.jumpUpdate(j_temp, k_temp, l_temp, pid, nbytes, nullptr);
+    }
+    jump_.communicate(*network_, *tpool_);
+    
+    //update the share
+    if(pid == i) {
+      auto [i_temp,j_temp,k_temp,l_temp] = findRemainingNumbers(pid);
+      vector<Ring> miss_values(nf);
+
+      // 对每个可能缺失的索引进行处理
+      for (size_t missing_party : {i_temp, j_temp, k_temp, l_temp}) {
+          // 确定三个存在的party
+          //make sure party1 < party2 < party3
+          size_t party1, party2, party3;
+          if (missing_party == i_temp) {
+              party1 = j_temp; party2 = k_temp; party3 = l_temp;
+          } else if (missing_party == j_temp) {
+              party1 = i_temp; party2 = k_temp; party3 = l_temp;
+          } else if (missing_party == k_temp) {
+              party1 = i_temp; party2 = j_temp; party3 = l_temp;
+          } else { // missing_party == l_temp
+              party1 = i_temp; party2 = j_temp; party3 = k_temp;
+          }
+          
+          // 获取数据
+          const auto* temp = reinterpret_cast<const Ring*>(jump_.getValues(party1, party2, party3).data());
+          
+          // 复制数据
+          std::copy(temp, temp + nf, miss_values.begin());
+          
+          // 填充到对应位置
+          for (size_t j = 0; j < nf; j++) {
+              data_sharing_vec[j][idxFromSenderAndReceiver(pid, missing_party)] = miss_values[j];
+          }
+      }
+    }
+    jump_.reset();
+  }
+
+
+  PreprocCircuit_permutation<Ring> preproc_perm(
+    std::move(data_sharing_vec),
+    std::move(perm_share_ptr),
+    std::move(saved_beta),
+    std::move(mask_value_vec));
+
+  return preproc_perm;
+
+}
+
 };  // namespace HoRGod

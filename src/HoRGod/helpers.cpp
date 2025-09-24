@@ -39,6 +39,17 @@ std::tuple<int, int, int> findRemainingNumbers(int min, int max) {
   return {remaining[0], remaining[1], remaining[2]};
 }
 
+std::tuple<int, int, int, int> findRemainingNumbers(int min) {
+  std::vector<int> remaining;
+  for (int num : {0, 1, 2, 3, 4}) {
+      if (num != min) {
+          remaining.push_back(num);
+      }
+  }
+  return {remaining[0], remaining[1], remaining[2], remaining[3]};
+}
+
+
 std::tuple<int, int> findOtherSenders(int min, int mid, int max, int id_) {
     if (id_ == min) {
         return {mid, max};  // mid < max
@@ -89,6 +100,8 @@ size_t upperTriangularToArray(size_t i, size_t j) {
   auto idx = (mx * (mx - 1)) / 2 + mn;
   return idx;
 }
+
+
 
 std::vector<uint64_t> packBool(const bool* data, size_t len) {
   std::vector<uint64_t> res;

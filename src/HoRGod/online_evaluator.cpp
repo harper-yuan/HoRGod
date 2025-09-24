@@ -36,6 +36,22 @@ OnlineEvaluator::OnlineEvaluator(int id,
       wires_(circ.num_gates),
       jump_(id) {}
 
+OnlineEvaluator::OnlineEvaluator(int id,  //复制创建评估器
+                                 std::shared_ptr<io::NetIOMP<5>> network,
+                                 PreprocCircuit_permutation<Ring> preproc_perm,
+                                 utils::LevelOrderedCircuit circ,
+                                 int security_param, int threads, int seed)
+    : id_(id),
+      security_param_(security_param),
+      rgen_(id, seed),
+      network_(std::move(network)),
+      preproc_perm_(std::move(preproc_perm)),
+      circ_(std::move(circ)),
+      wires_(circ.num_gates),
+      jump_(id) {
+  tpool_ = std::make_shared<ThreadPool>(threads);
+}
+
 void OnlineEvaluator::setInputs(
     const std::unordered_map<utils::wire_t, Ring>& inputs) { //映射：从wire_id -> values
   // Input gates have depth 0.
@@ -117,6 +133,79 @@ void OnlineEvaluator::setInputs(
   }
   jump_.reset();
 }
+
+void OnlineEvaluator::setBetaVectors(const std::vector<Ring>& my_betas, const std::vector<Ring>& my_beta_perm) {
+  // 每个参与方都有 my_betas_ 和 my_betas_perm_
+  my_betas_.clear();
+  my_betas_perm_.clear();
+
+  if (id_ == INPUT_PERMUTATION) {
+    // 参与方0：发送给其他四个参与方
+    std::vector<std::future<void>> res;
+    for (int pid = 0; pid < 5; ++pid) {
+      if(id_ != pid) {
+        res.push_back(tpool_->enqueue([&, pid]() {
+          // 先发长度，避免不一致
+          size_t size_betas = my_betas.size();
+          size_t size_perm  = my_beta_perm.size();
+
+          network_->send(pid, &size_betas, sizeof(size_t));
+          network_->send(pid, &size_perm, sizeof(size_t));
+
+          // 发数据
+          network_->send(pid, my_betas.data(), size_betas * sizeof(Ring));
+          network_->send(pid, my_beta_perm.data(), size_perm * sizeof(Ring));
+          network_->flush(pid);
+        }));
+      }
+    }
+    for (auto& f : res) f.get();
+
+    // 自己直接保存
+    my_betas_ = my_betas;
+    my_betas_perm_ = my_beta_perm;
+  } 
+  else {
+    // 参与方1~4：接收来自0的广播
+    
+    size_t size_betas = 0, size_perm = 0;
+    network_->recv(INPUT_PERMUTATION, &size_betas, sizeof(size_t));
+    network_->recv(INPUT_PERMUTATION, &size_perm, sizeof(size_t));
+
+    my_betas_.resize(size_betas);
+    my_betas_perm_.resize(size_perm);
+
+    network_->recv(INPUT_PERMUTATION, my_betas_.data(), size_betas * sizeof(Ring));
+    network_->recv(INPUT_PERMUTATION, my_betas_perm_.data(), size_perm * sizeof(Ring));
+  }
+}
+
+void OnlineEvaluator::setInputs_perm(vector<Ring> data_vector, vector<Ring> permutation_vector) { //映射：从wire_id -> values
+  
+  vector<ReplicatedShare<Ring>> data_sharing_vec = preproc_perm_.data_;
+  PreprocPermutation<Ring> pre_input_perm =  *preproc_perm_.permutation_;
+  vector<Ring> mask_value_vec = preproc_perm_.mask_value_vec_;
+  int nf = data_sharing_vec.size();
+  data_sharing_vec_ = std::move(data_sharing_vec);
+
+  // Input gates have depth 0.
+  std::vector<Ring> my_betas;
+  std::vector<Ring> my_beta_perm;
+  std::vector<size_t> num_inp_pid(5, 0);
+  int input_pid = INPUT_PERMUTATION;
+  
+  if(id_ == input_pid) {
+    my_beta_perm = composePermutations(permutation_vector, inversePermutation(pre_input_perm.mask_value));
+    for(int i = 0; i < nf; i++){
+      num_inp_pid[input_pid]++; //记录某个pid的输入数量
+      my_betas.push_back(data_vector[i] + mask_value_vec[i]); // β = Σα + x
+    }
+  }
+  
+  setBetaVectors(my_betas, my_beta_perm);
+  jump_.reset();
+}
+
 
 void OnlineEvaluator::setRandomInputs() {
   // Input gates have depth 0.
@@ -557,6 +646,30 @@ std::vector<Ring> OnlineEvaluator::getOutputs() {
   return outvals;
 }
 
+std::vector<Ring> OnlineEvaluator::getOutputs_perm() {
+  int nf = data_sharing_vec_.size();
+
+  std::vector<Ring> outvals(nf);
+  if (data_sharing_vec_.empty()) {
+    return outvals;
+  }
+
+  // std::vector<ReplicatedShare<Ring>> shares;
+  // for (size_t i = 0; i < outvals.size(); ++i) {
+  //   auto wout = circ_.outputs[i];
+  //   // outvals[i] = wires_[wout] - preproc_.gates[wout]->mask.sum(); //β - Σα
+    
+  //   shares.push_back(preproc_.gates[wout]->mask);
+  // }
+  auto sum = reconstruct(data_sharing_vec_);
+  // std::cout<<"参与方"<<id_<<"重构出的sum为"<<sum[0]<<std::endl;
+  for (size_t i = 0; i < outvals.size(); ++i) {
+    outvals[i] = my_betas_[i] - sum[i]; //β - Σα
+  }
+
+  return outvals;
+}
+
 std::vector<Ring> OnlineEvaluator::evaluateCircuit(
     const std::unordered_map<utils::wire_t, Ring>& inputs) {
   setInputs(inputs);
@@ -564,6 +677,103 @@ std::vector<Ring> OnlineEvaluator::evaluateCircuit(
     evaluateGatesAtDepth(i);
   }
   return getOutputs();
+}
+
+std::vector<Ring> OnlineEvaluator::evaluateCircuit_perm(vector<Ring> data_vector, vector<Ring> permutation_vector) {
+  setInputs_perm(data_vector, permutation_vector);
+
+  vector<ReplicatedShare<Ring>> data_sharing_vec = preproc_perm_.data_;
+  PreprocPermutation<Ring> pre_input_perm =  *preproc_perm_.permutation_;
+  vector<vector<Ring>> saved_beta = preproc_perm_.saved_beta_; //每一方总共能存4个，而且是按照顺序存的。
+  vector<Ring> mask_value_vec = preproc_perm_.mask_value_vec_;
+  int nf = data_sharing_vec.size();
+
+  for(int i = 0; i < 5; i++) {
+    auto [i_temp,j_temp,k_temp,l_temp] = findRemainingNumbers(i);
+    size_t nbytes = sizeof(Ring) * nf;
+    if(id_ != i) {
+      auto alpha_i = pre_input_perm.mask[idxFromSenderAndReceiver(id_, i)];
+      auto beta_i = saved_beta[idxFromSenderAndReceiver(id_, i)];
+      applyPermutation(alpha_i, my_betas_);
+      for(int j = 0; j < nf; j++) {
+        my_betas_[j] = my_betas_[j] + beta_i[j];
+      }
+      
+      if(id_ != l_temp) { //规定最小的三个数来传数据
+        jump_.jumpUpdate(i_temp, j_temp, k_temp, i, nbytes, my_betas_.data());
+      }
+    }
+    else {
+      jump_.jumpUpdate(i_temp, j_temp, k_temp, id_, nbytes, nullptr);
+    }
+
+    jump_.communicate(*network_, *tpool_);
+
+    if(id_ == i) {
+      // 获取数据
+      vector<Ring> miss_values(nf);
+      const auto* temp = reinterpret_cast<const Ring*>(jump_.getValues(i_temp, j_temp, k_temp).data());
+      // 复制数据
+      std::copy(temp, temp + nf, miss_values.begin());
+
+      for (size_t j = 0; j < nf; j++) {
+        my_betas_[j] = miss_values[j];
+      }
+    }
+    jump_.reset();
+  }
+  
+  applyPermutation(my_betas_perm_, data_sharing_vec_);
+  applyPermutation(my_betas_perm_, my_betas_);
+  return getOutputs_perm();
+}
+
+
+std::vector<Ring> OnlineEvaluator::evaluateCircuit_perm_no_input(vector<Ring> data_vector, vector<Ring> permutation_vector) {
+  vector<ReplicatedShare<Ring>> data_sharing_vec = preproc_perm_.data_;
+  PreprocPermutation<Ring> pre_input_perm =  *preproc_perm_.permutation_;
+  vector<vector<Ring>> saved_beta = preproc_perm_.saved_beta_; //每一方总共能存4个，而且是按照顺序存的。
+  vector<Ring> mask_value_vec = preproc_perm_.mask_value_vec_;
+  int nf = data_sharing_vec.size();
+
+  for(int i = 0; i < 5; i++) {
+    auto [i_temp,j_temp,k_temp,l_temp] = findRemainingNumbers(i);
+    size_t nbytes = sizeof(Ring) * nf;
+    if(id_ != i) {
+      auto alpha_i = pre_input_perm.mask[idxFromSenderAndReceiver(id_, i)];
+      auto beta_i = saved_beta[i];
+      applyPermutation(alpha_i, my_betas_);
+      for(int j = 0; j < nf; j++) {
+        my_betas_[j] = my_betas_[j] + beta_i[j];
+      }
+      
+      if(id_ != l_temp) { //规定最小的三个数来传数据
+        jump_.jumpUpdate(i_temp, j_temp, k_temp, i, nbytes, my_betas_.data());
+      }
+    }
+    else {
+      jump_.jumpUpdate(i_temp, j_temp, k_temp, id_, nbytes, nullptr);
+    }
+
+    jump_.communicate(*network_, *tpool_);
+
+    if(id_ == i) {
+      // 获取数据
+      vector<Ring> miss_values(nf);
+      const auto* temp = reinterpret_cast<const Ring*>(jump_.getValues(i_temp, j_temp, k_temp).data());
+      // 复制数据
+      std::copy(temp, temp + nf, miss_values.begin());
+
+      for (size_t j = 0; j < nf; j++) {
+        my_betas_[j] = miss_values[j];
+      }
+    }
+    jump_.reset();
+  }
+  
+  applyPermutation(my_betas_perm_, data_sharing_vec_);
+  applyPermutation(my_betas_perm_, my_betas_);
+  return getOutputs_perm();
 }
 
 BoolEvaluator::BoolEvaluator(int my_id,
