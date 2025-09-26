@@ -63,7 +63,6 @@ class OnlineEvaluator {
   // 'inputs' is a mapping from wire id to input value with entries for only
   // those inputs provided by this party.
   void setInputs(const std::unordered_map<utils::wire_t, Ring>& inputs);
-  void setBetaVectors(const std::vector<Ring>& my_betas, const std::vector<Ring>& my_beta_perm);
   void setInputs_perm(vector<Ring> data_vector, vector<Ring> permutation_vector);
   // Set random values on circuit input wires.
   void setRandomInputs();
@@ -81,7 +80,7 @@ class OnlineEvaluator {
   std::vector<Ring> evaluateCircuit(
       const std::unordered_map<utils::wire_t, Ring>& inputs);
   std::vector<Ring> evaluateCircuit_perm(vector<Ring> data_vector, vector<Ring> permutation_vector);
-  std::vector<Ring> evaluateCircuit_perm_no_input(vector<Ring> data_vector, vector<Ring> permutation_vector);
+  void evaluateCircuit_perm_no_input(vector<Ring> data_vector, vector<Ring> permutation_vector);
 };
 
 // Helper class to efficiently evaluate online phase on boolean circuit.

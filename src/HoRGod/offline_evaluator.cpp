@@ -788,11 +788,9 @@ std::array<vector<Ring>, 6> OfflineEvaluator::reshare_gen_random_vector(int pid,
   std::array<vector<Ring>, 6> result;
   for(int j =  0; j < array_length; j++) {
     Ring sum_temp = 0;
-    Ring temp = 10000;
+    Ring temp;
     for(int i = 0; i < 5; i++) {
-      // temp += i*i + 100*i;
       rgen.getComplement(pid).random_data(&temp, sizeof(Ring));
-      // temp = temp % (1ULL<<8);
       result[i].push_back(temp);
       sum_temp += temp;
     }
@@ -1086,7 +1084,7 @@ PreprocCircuit_permutation<Ring> OfflineEvaluator::dummy_permutation(
                                                   input_pid, 
                                                   temp_dummy_perm_sharing.secret()
                                               );
-  
+  auto random_vector_array = reshare_gen_random_vector(pid, rgen_, nf);
   //start to offline
   vector<vector<Ring>> saved_beta(4);
   for(int i = 0 ; i < 5; i++) {
@@ -1096,7 +1094,7 @@ PreprocCircuit_permutation<Ring> OfflineEvaluator::dummy_permutation(
       applyPermutation(alpha_i, data_sharing_vec);
       
       //reshare protocol
-      auto random_vector_array = reshare_gen_random_vector(pid, rgen_, nf);
+      
       saved_beta[idxFromSenderAndReceiver(pid, i)] = random_vector_array[5]; //每一方总共能存4个，而且是按照顺序存的。
       for(int j = 0; j < nf; j++) {
         for(int k= 0; k<5 ;k++) { //把随机数加到共享上去，5个共享

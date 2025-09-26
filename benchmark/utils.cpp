@@ -14,9 +14,9 @@ double TimePoint::operator-(const TimePoint& rhs) const {
 }
 
 CommPoint::CommPoint(io::NetIOMP<5>& network) : stats{} {
-  for (size_t i = 0; i < 4; ++i) {
+  for (size_t i = 0; i < 5; ++i) {
     if (i != network.party) {
-      stats[i] = network.get(i, false)->counter + network.get(i, true)->counter;
+      stats[i] = network.get(i, false)->counter + network.get(i, true)->counter; //计算给所有人发送的，ios1是小pid发送给大pid，ios2是大pid发送给小pid，都得加上
     }
   }
 }

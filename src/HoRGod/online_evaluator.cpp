@@ -46,11 +46,24 @@ OnlineEvaluator::OnlineEvaluator(int id,  //复制创建评估器
       rgen_(id, seed),
       network_(std::move(network)),
       preproc_perm_(std::move(preproc_perm)),
-      circ_(std::move(circ)),
       wires_(circ.num_gates),
       jump_(id) {
   tpool_ = std::make_shared<ThreadPool>(threads);
 }
+
+// OnlineEvaluator::OnlineEvaluator(int id,  //复制创建评估器
+//                                  std::shared_ptr<io::NetIOMP<5>> network,
+//                                  PreprocCircuit_permutation<Ring> preproc_perm,
+//                                  utils::LevelOrderedCircuit circ,
+//                                  int security_param, int threads, int seed)
+//     : id_(id),
+//       // security_param_(security_param),
+//       rgen_(id, seed),
+//       network_(std::move(network)),
+//       // preproc_perm_(std::move(preproc_perm)),
+//       jump_(id) {
+//   tpool_ = std::make_shared<ThreadPool>(threads);
+// }
 
 void OnlineEvaluator::setInputs(
     const std::unordered_map<utils::wire_t, Ring>& inputs) { //映射：从wire_id -> values
@@ -134,8 +147,27 @@ void OnlineEvaluator::setInputs(
   jump_.reset();
 }
 
-void OnlineEvaluator::setBetaVectors(const std::vector<Ring>& my_betas, const std::vector<Ring>& my_beta_perm) {
-  // 每个参与方都有 my_betas_ 和 my_betas_perm_
+void OnlineEvaluator::setInputs_perm(vector<Ring> data_vector, vector<Ring> permutation_vector) { //映射：从wire_id -> values
+  vector<ReplicatedShare<Ring>> data_sharing_vec = preproc_perm_.data_;
+  PreprocPermutation<Ring> pre_input_perm =  *preproc_perm_.permutation_;
+  vector<Ring> mask_value_vec = preproc_perm_.mask_value_vec_;
+  int nf = data_sharing_vec.size();
+  data_sharing_vec_ = std::move(data_sharing_vec);
+
+  // Input gates have depth 0.
+  std::vector<Ring> my_betas;
+  std::vector<Ring> my_beta_perm;
+  std::vector<size_t> num_inp_pid(5, 0);
+  int input_pid = INPUT_PERMUTATION;
+  
+  if(id_ == input_pid) {
+    my_beta_perm = composePermutations(permutation_vector, inversePermutation(pre_input_perm.mask_value));
+    for(int i = 0; i < nf; i++){
+      num_inp_pid[input_pid]++; //记录某个pid的输入数量
+      my_betas.push_back(data_vector[i] + mask_value_vec[i]); // β = Σα + x
+    }
+  }
+
   my_betas_.clear();
   my_betas_perm_.clear();
 
@@ -178,31 +210,6 @@ void OnlineEvaluator::setBetaVectors(const std::vector<Ring>& my_betas, const st
     network_->recv(INPUT_PERMUTATION, my_betas_.data(), size_betas * sizeof(Ring));
     network_->recv(INPUT_PERMUTATION, my_betas_perm_.data(), size_perm * sizeof(Ring));
   }
-}
-
-void OnlineEvaluator::setInputs_perm(vector<Ring> data_vector, vector<Ring> permutation_vector) { //映射：从wire_id -> values
-  
-  vector<ReplicatedShare<Ring>> data_sharing_vec = preproc_perm_.data_;
-  PreprocPermutation<Ring> pre_input_perm =  *preproc_perm_.permutation_;
-  vector<Ring> mask_value_vec = preproc_perm_.mask_value_vec_;
-  int nf = data_sharing_vec.size();
-  data_sharing_vec_ = std::move(data_sharing_vec);
-
-  // Input gates have depth 0.
-  std::vector<Ring> my_betas;
-  std::vector<Ring> my_beta_perm;
-  std::vector<size_t> num_inp_pid(5, 0);
-  int input_pid = INPUT_PERMUTATION;
-  
-  if(id_ == input_pid) {
-    my_beta_perm = composePermutations(permutation_vector, inversePermutation(pre_input_perm.mask_value));
-    for(int i = 0; i < nf; i++){
-      num_inp_pid[input_pid]++; //记录某个pid的输入数量
-      my_betas.push_back(data_vector[i] + mask_value_vec[i]); // β = Σα + x
-    }
-  }
-  
-  setBetaVectors(my_betas, my_beta_perm);
   jump_.reset();
 }
 
@@ -648,7 +655,6 @@ std::vector<Ring> OnlineEvaluator::getOutputs() {
 
 std::vector<Ring> OnlineEvaluator::getOutputs_perm() {
   int nf = data_sharing_vec_.size();
-
   std::vector<Ring> outvals(nf);
   if (data_sharing_vec_.empty()) {
     return outvals;
@@ -729,7 +735,7 @@ std::vector<Ring> OnlineEvaluator::evaluateCircuit_perm(vector<Ring> data_vector
 }
 
 
-std::vector<Ring> OnlineEvaluator::evaluateCircuit_perm_no_input(vector<Ring> data_vector, vector<Ring> permutation_vector) {
+void OnlineEvaluator::evaluateCircuit_perm_no_input(vector<Ring> data_vector, vector<Ring> permutation_vector) {
   vector<ReplicatedShare<Ring>> data_sharing_vec = preproc_perm_.data_;
   PreprocPermutation<Ring> pre_input_perm =  *preproc_perm_.permutation_;
   vector<vector<Ring>> saved_beta = preproc_perm_.saved_beta_; //每一方总共能存4个，而且是按照顺序存的。
@@ -741,7 +747,7 @@ std::vector<Ring> OnlineEvaluator::evaluateCircuit_perm_no_input(vector<Ring> da
     size_t nbytes = sizeof(Ring) * nf;
     if(id_ != i) {
       auto alpha_i = pre_input_perm.mask[idxFromSenderAndReceiver(id_, i)];
-      auto beta_i = saved_beta[i];
+      auto beta_i = saved_beta[idxFromSenderAndReceiver(id_, i)];
       applyPermutation(alpha_i, my_betas_);
       for(int j = 0; j < nf; j++) {
         my_betas_[j] = my_betas_[j] + beta_i[j];
@@ -773,7 +779,7 @@ std::vector<Ring> OnlineEvaluator::evaluateCircuit_perm_no_input(vector<Ring> da
   
   applyPermutation(my_betas_perm_, data_sharing_vec_);
   applyPermutation(my_betas_perm_, my_betas_);
-  return getOutputs_perm();
+  // return getOutputs_perm();
 }
 
 BoolEvaluator::BoolEvaluator(int my_id,
@@ -813,7 +819,7 @@ std::vector<BoolRing> BoolEvaluator::reconstruct(
 
   std::vector<uint8_t> vtemp(packed_recon_shares[0].size());
   const auto miss_values = jump.getValues(pidFromOffset(id, 1), pidFromOffset(id, 2), pidFromOffset(id, 3)).data();       
-  // std::copy(miss_values, miss_values + num, vres.begin());
+  // std::copy(miss_values, miss_values + num, vres.begin()); 
   for (size_t i = 0; i<vtemp.size(); i++) {
     vtemp[i] = miss_values[i] ^ packed_recon_shares[0][i] ^ packed_recon_shares[1][i] ^ packed_recon_shares[2][i] ^ packed_recon_shares[3][i];
   }

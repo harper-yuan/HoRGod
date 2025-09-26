@@ -2,7 +2,6 @@
 #include <HoRGod/offline_evaluator.h>
 #include <HoRGod/online_evaluator.h>
 #include <utils/circuit.h>
-
 #include <algorithm>
 #include <boost/program_options.hpp>
 #include <cmath>

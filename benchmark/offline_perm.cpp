@@ -136,7 +136,9 @@ void benchmark(const bpo::variables_map& opts) {
     emp::PRG prg(&seed, 0);
     vector<Ring> data_vector = generateRandomPermutation(prg, gates);
     vector<Ring> permutation_vector = generateRandomPermutation(prg, gates);
-    BENCHMARK(rbench, "offline_setwire", eval.dummy_permutation, circ, input_pid_map, security_param, pid, prg, data_vector, permutation_vector);
+    BENCHMARK(rbench, "offline", eval.dummy_permutation, circ, input_pid_map, security_param, pid, prg, data_vector, permutation_vector);
+
+
     // BENCHMARK(rbench, "set_wire_masks", eval.setWireMasks, input_pid_map);
     // BENCHMARK(rbench, "ab_terms", eval.computeABCrossTerms);
     // BENCHMARK(rbench, "distributed_zkp", eval.distributedZKP);
