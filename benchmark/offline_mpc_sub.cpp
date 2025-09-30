@@ -119,8 +119,6 @@ void benchmark(const bpo::variables_map& opts) {
     }
   }
 
-  initNTL(cp_threads);
-
   for (size_t r = 0; r < repeat; ++r) {
     OfflineEvaluator eval(pid, network1, network2, circ, security_param,
                           cm_threads, seed);
