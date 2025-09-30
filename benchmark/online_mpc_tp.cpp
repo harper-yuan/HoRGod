@@ -1,7 +1,7 @@
 #include <io/netmp.h>
 #include <HoRGod/offline_evaluator.h>
 #include <utils/circuit.h>
-
+#include <HoRGod/online_evaluator.h>
 #include <algorithm>
 #include <boost/program_options.hpp>
 #include <cmath>
@@ -14,19 +14,30 @@ using namespace HoRGod;
 using json = nlohmann::json;
 namespace bpo = boost::program_options;
 
-utils::Circuit<Ring> generateCircuit(size_t num_mult_gates) {
+utils::Circuit<Ring> generateCircuit(size_t gates_per_level, size_t depth) {
   utils::Circuit<Ring> circ;
 
-  std::vector<utils::wire_t> inputs(num_mult_gates);
-  std::generate(inputs.begin(), inputs.end(),
+  std::vector<utils::wire_t> level_inputs(gates_per_level);
+  std::generate(level_inputs.begin(), level_inputs.end(),
                 [&]() { return circ.newInputWire(); });
 
-  std::vector<utils::wire_t> outputs(num_mult_gates);
-  for (size_t i = 0; i < num_mult_gates - 1; ++i) {
-    outputs[i] = circ.addGate(utils::GateType::kMul, inputs[i], inputs[i + 1]);
+  for (size_t d = 0; d < depth; ++d) {
+    std::vector<utils::wire_t> level_outputs(gates_per_level);
+
+    for (size_t i = 0; i < gates_per_level - 1; ++i) {
+      level_outputs[i] = circ.addGate(utils::GateType::kMul, level_inputs[i],
+                                      level_inputs[i + 1]);
+    }
+    level_outputs[gates_per_level - 1] =
+        circ.addGate(utils::GateType::kMul, level_inputs[gates_per_level - 1],
+                     level_inputs[0]);
+
+    level_inputs = std::move(level_outputs);
   }
-  outputs[num_mult_gates - 1] = circ.addGate(
-      utils::GateType::kMul, inputs[num_mult_gates - 1], inputs[0]);
+
+  for (auto i : level_inputs) {
+    circ.setAsOutput(i);
+  }
 
   return circ;
 }
@@ -42,11 +53,11 @@ void benchmark(const bpo::variables_map& opts) {
   auto gates = opts["gates"].as<size_t>();
   auto pid = opts["pid"].as<size_t>();
   auto security_param = opts["security-param"].as<size_t>();
-  auto cm_threads = opts["cm-threads"].as<size_t>();
-  auto cp_threads = opts["cp-threads"].as<size_t>();
+  auto threads = opts["threads"].as<size_t>();
   auto seed = opts["seed"].as<size_t>();
   auto repeat = opts["repeat"].as<size_t>();
   auto port = opts["port"].as<int>();
+  auto depth = opts["depth"].as<size_t>();
 
   std::shared_ptr<io::NetIOMP<5>> network1 = nullptr;
   std::shared_ptr<io::NetIOMP<5>> network2 = nullptr;
@@ -79,8 +90,7 @@ void benchmark(const bpo::variables_map& opts) {
   output_data["details"] = {{"gates", gates},
                             {"pid", pid},
                             {"security_param", security_param},
-                            {"cm_threads", cm_threads},
-                            {"cp_threads", cp_threads},
+                            {"threads", threads},
                             {"seed", seed},
                             {"repeat", repeat}};
   output_data["benchmarks"] = json::array();
@@ -91,7 +101,7 @@ void benchmark(const bpo::variables_map& opts) {
   }
   std::cout << std::endl;
 
-  auto circ = generateCircuit(gates).orderGatesByLevel();
+  auto circ = generateCircuit(gates, depth).orderGatesByLevel();
 
   std::unordered_map<utils::wire_t, int> input_pid_map;
   for (const auto& g : circ.gates_by_level[0]) {
@@ -101,9 +111,16 @@ void benchmark(const bpo::variables_map& opts) {
   }
 
   for (size_t r = 0; r < repeat; ++r) {
-    OfflineEvaluator eval(pid, network1, network2, circ, security_param,
-                          cm_threads, seed);
     emp::PRG prg(&seed, 0);
+    auto preproc =
+        OfflineEvaluator::dummy(circ, input_pid_map, security_param, pid, prg);
+
+    OnlineEvaluator eval(pid, network1, std::move(preproc), circ, security_param,
+                         threads, seed);
+
+    eval.setRandomInputs();
+    
+    
     network1->sync();
     network2->sync();
 
@@ -112,7 +129,9 @@ void benchmark(const bpo::variables_map& opts) {
     CommPoint net1_st(*network1);
     CommPoint net2_st(*network2);
     TimePoint start;
-    eval.run(circ, input_pid_map, security_param, pid, prg);
+    for (size_t i = 0; i < circ.gates_by_level.size(); ++i) {
+      eval.evaluateGatesAtDepth_parallel(i, threads);
+    }
     TimePoint end;
     CommPoint net1_ed(*network1);
     CommPoint net2_ed(*network2);
@@ -135,7 +154,7 @@ void benchmark(const bpo::variables_map& opts) {
     std::cout << "--- Repetition " << r + 1 << " ---\n";
     std::cout << "time: " << time << " ms\n";
     std::cout << "sent: " << bytes_sent << " bytes\n";
-    std::cout << "throughput: " << (gates * 1e3) / time
+    std::cout << "throughput: " << (gates * 1e3) / time //因为是ms，所以乘1000计算每秒的吞吐量
               << " triples per second\n";
 
     output_data["benchmarks"].push_back(std::move(rbench));
@@ -165,9 +184,9 @@ bpo::options_description programOptions() {
   desc.add_options()
     ("gates,g", bpo::value<size_t>()->required(), "Number of multiplication gates.")
     ("pid,p", bpo::value<size_t>()->required(), "Party ID.")
+    ("depth,d", bpo::value<size_t>()->required(), "Multiplicative depth of circuit.")
     ("security-param", bpo::value<size_t>()->default_value(128), "Security parameter in bits.")
-    ("cm-threads", bpo::value<size_t>()->default_value(1), "Number of threads for communication (recommended value is at least 7).")
-    ("cp-threads", bpo::value<size_t>()->default_value(1), "Number of threads for computation (recommended value close to number of cores).")
+    ("threads,t", bpo::value<size_t>()->default_value(1), "Number of threads (recommended 6).")
     ("seed", bpo::value<size_t>()->default_value(200), "Value of the random seed.")
     ("net-config", bpo::value<std::string>(), "Path to JSON file containing network details of all parties.")
     ("localhost", bpo::bool_switch(), "All parties are on same machine.")

@@ -3,7 +3,7 @@
 #include <memory>
 #include <unordered_map>
 #include <vector>
-
+#include <omp.h>
 #include "../io/netmp.h"
 #include "../utils/circuit.h"
 // #include "jump_provider.h"
@@ -69,6 +69,7 @@ class OnlineEvaluator {
   // Evaluate gates at depth 'depth'.
   // This method should be called in increasing order of 'depth' values.
   void evaluateGatesAtDepth(size_t depth);
+  void evaluateGatesAtDepth_parallel(size_t depth, size_t computation_threads);
   // Compute and returns circuit outputs.
   std::vector<Ring> getOutputs();
   std::vector<Ring> getOutputs_perm();

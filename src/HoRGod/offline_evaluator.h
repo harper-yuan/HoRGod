@@ -14,7 +14,6 @@
 #include "../io/netmp.h"
 #include "../utils/circuit.h"
 #include "ijmp.h"
-#include "ot_provider.h"
 #include "preproc.h"
 #include "rand_gen_pool.h"
 #include "sharing.h"
@@ -31,7 +30,6 @@ class OfflineEvaluator {
   utils::LevelOrderedCircuit circ_;
   std::shared_ptr<ThreadPool> tpool_;
   PreprocCircuit<Ring> preproc_;
-  std::vector<std::unique_ptr<OTProvider>> ot_;
   ImprovedJmp jump_;
   NTL::ZZ_pContext ZZ_p_ctx_;
   NTL::ZZ_pEContext ZZ_pE_ctx_;

@@ -15,7 +15,7 @@
 #define CMP_GREATER_RESULT 1
 #define CMP_lESS_RESULT 0
 #define BITS_BETA 4
-#define BITS_GAMMA 20
+#define BITS_GAMMA 56 // BITS_GAMMA+BITS_BETA < N-1
 
 namespace HoRGod {
 int pidFromOffset_N(int id, int offset, int Np);

@@ -1,5 +1,7 @@
 #include "online_evaluator.h"
 #include <array>
+
+
 using namespace HoRGod;
 namespace HoRGod {
 OnlineEvaluator::OnlineEvaluator(int id,  //复制创建评估器
@@ -295,36 +297,471 @@ std::array<std::vector<Ring>, 4> OnlineEvaluator::msbEvaluate(
   return outputs;
 }
 
+// std::vector<Ring> OnlineEvaluator::reconstruct(
+//     const std::array<std::vector<Ring>, 4>& recon_shares) {
+//   // All vectors in recon_shares should have same size.
+//   size_t num = recon_shares[0].size();
+//   size_t nbytes = sizeof(Ring) * num;
+//   // std::cout<<"nbytes: "<<nbytes<<endl;
+//   if (nbytes == 0) {
+//     return {};
+//   }
+
+//   std::vector<Ring> vres(num);
+//   jump_.jumpUpdate(id_, pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, -1), nbytes, 
+//                   recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -1))].data());
+//   jump_.jumpUpdate(pidFromOffset(id_, -1), id_, pidFromOffset(id_, 1), pidFromOffset(id_, -2), nbytes, 
+//                   recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -2))].data());
+//   jump_.jumpUpdate(pidFromOffset(id_, -2), pidFromOffset(id_, -1), id_, pidFromOffset(id_, -3), nbytes, 
+//                   recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -3))].data());
+//   jump_.jumpUpdate(pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, 3), id_, nbytes, 
+//                   recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -3))].data());
+//   jump_.communicate(*network_, *tpool_);
+
+//   // reinterpret_cast 的作用是 对指针类型进行低级别的重新解释，即将原始指针类型强制转换为另一种不相关的指针类型（这里是 const Ring*），而无需修改底层数据。
+//   const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, 3)).data());       
+//   std::copy(miss_values, miss_values + num, vres.begin());
+//   for (size_t i = 0; i<num; i++) {
+//     vres[i] = vres[i] + recon_shares[0][i] + recon_shares[1][i] + recon_shares[2][i] + recon_shares[3][i];
+//   }
+//   jump_.reset();
+//   return vres;
+// }
+
 std::vector<Ring> OnlineEvaluator::reconstruct(
     const std::array<std::vector<Ring>, 4>& recon_shares) {
   // All vectors in recon_shares should have same size.
   size_t num = recon_shares[0].size();
   size_t nbytes = sizeof(Ring) * num;
-
+  // std::cout<<"nbytes: "<<nbytes<<endl;
   if (nbytes == 0) {
     return {};
   }
 
   std::vector<Ring> vres(num);
+  switch (id_) {
+    case 0: { //3个数据
+      //round 1
+      jump_.jumpUpdate(2, 3, 4, 0, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 0)].data());
+      jump_.communicate(*network_, *tpool_);
+      
+      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(2, 3, 4).data()); 
+      std::copy(miss_values, miss_values + num, vres.begin());
+      for (size_t i = 0; i<num; i++) {
+        vres[i] = vres[i] + recon_shares[0][i] + recon_shares[1][i] + recon_shares[2][i] + recon_shares[3][i];
+      }
+      jump_.reset();
 
-  jump_.jumpUpdate(id_, pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, -1), nbytes, 
-                  recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -1))].data());
-  jump_.jumpUpdate(pidFromOffset(id_, -1), id_, pidFromOffset(id_, 1), pidFromOffset(id_, -2), nbytes, 
-                  recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -2))].data());
-  jump_.jumpUpdate(pidFromOffset(id_, -2), pidFromOffset(id_, -1), id_, pidFromOffset(id_, -3), nbytes, 
-                  recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -3))].data());
-  jump_.jumpUpdate(pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, 3), id_, nbytes, 
-                  recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -3))].data());
-  jump_.communicate(*network_, *tpool_);
+      //round 2
+      jump_.jumpUpdate(0, 1, 3, 2, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 2)].data());
+      jump_.communicate(*network_, *tpool_);
+      jump_.reset();
 
-  //reinterpret_cast 的作用是 对指针类型进行低级别的重新解释，即将原始指针类型强制转换为另一种不相关的指针类型（这里是 const Ring*），而无需修改底层数据。
-  const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, 3)).data());       
-  std::copy(miss_values, miss_values + num, vres.begin());
-  for (size_t i = 0; i<num; i++) {
-    vres[i] = vres[i] + recon_shares[0][i] + recon_shares[1][i] + recon_shares[2][i] + recon_shares[3][i];
+      //round 3
+      jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
+      jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
+      jump_.communicate(*network_, *tpool_);
+      jump_.reset();
+      break;
+    }
+    case 1: { //3个数据
+      //round 1
+      jump_.jumpUpdate(2, 3, 4, 1, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 1)].data());
+      jump_.communicate(*network_, *tpool_);
+      
+      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(2, 3, 4).data()); 
+      std::copy(miss_values, miss_values + num, vres.begin());
+      for (size_t i = 0; i<num; i++) {
+        vres[i] = vres[i] + recon_shares[0][i] + recon_shares[1][i] + recon_shares[2][i] + recon_shares[3][i];
+      }
+      jump_.reset();
+
+      //round 2
+      jump_.jumpUpdate(0, 1, 3, 2, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 2)].data());
+      jump_.communicate(*network_, *tpool_);
+      jump_.reset();
+
+      //round 3
+      jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
+      jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
+      jump_.communicate(*network_, *tpool_);
+      jump_.reset();
+      break;
+    }
+    case 2: { //3个数据
+      //round 1
+      jump_.jumpUpdate(2, 3, 4, 0, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 0)].data());
+      jump_.jumpUpdate(2, 3, 4, 1, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 1)].data());
+      jump_.communicate(*network_, *tpool_);
+      jump_.reset();
+
+
+      //round 2
+      jump_.jumpUpdate(0, 1, 3, 2, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 2)].data());
+      jump_.communicate(*network_, *tpool_);
+      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 3).data()); 
+      std::copy(miss_values, miss_values + num, vres.begin());
+      for (size_t i = 0; i<num; i++) {
+        vres[i] = vres[i] + recon_shares[0][i] + recon_shares[1][i] + recon_shares[2][i] + recon_shares[3][i];
+      }
+      jump_.reset();
+
+
+      //round 3
+      jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
+      jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
+      jump_.communicate(*network_, *tpool_);
+      jump_.reset();
+      break;
+    }
+    case 3: { //3个数据
+      //round 1
+      jump_.jumpUpdate(2, 3, 4, 0, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 0)].data());
+      jump_.jumpUpdate(2, 3, 4, 1, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 1)].data());
+      jump_.communicate(*network_, *tpool_);
+      jump_.reset();
+
+
+      //round 2
+      jump_.jumpUpdate(0, 1, 3, 2, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 2)].data());
+      jump_.communicate(*network_, *tpool_);
+      
+      jump_.reset();
+
+
+      //round 3
+      jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
+      jump_.communicate(*network_, *tpool_);
+      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 2).data()); 
+      std::copy(miss_values, miss_values + num, vres.begin());
+      jump_.reset();
+      break;
+    }
+    case 4: { //3个数据
+      //round 1
+      jump_.jumpUpdate(2, 3, 4, 0, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 0)].data());
+      jump_.jumpUpdate(2, 3, 4, 1, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 1)].data());
+      jump_.communicate(*network_, *tpool_);
+      jump_.reset();
+
+      //round 3
+      jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
+      jump_.communicate(*network_, *tpool_);
+      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 2).data()); 
+      std::copy(miss_values, miss_values + num, vres.begin());
+      jump_.reset();
+      break;
+    }
   }
-  jump_.reset();
   return vres;
+}
+
+void OnlineEvaluator::evaluateGatesAtDepth_parallel(size_t depth, size_t computation_threads) {
+  std::array<std::vector<Ring>, 4> recon_shares;
+  std::vector<utils::FIn1Gate> relu_gates;
+  std::vector<utils::FIn1Gate> msb_gates;
+  size_t count = 0;
+  // for (auto& gate : circ_.gates_by_level[depth]) {
+  //   std::cout << "\rProgress: " << count <<" gate type: "<<gate->type <<std::flush;
+  //   count++;
+  omp_set_num_threads(computation_threads); 
+  // omp_set_num_threads(omp_get_num_procs());
+  // #pragma omp parallel for
+  #pragma omp parallel for
+  for (size_t i_temp = 0; i_temp < circ_.gates_by_level[depth].size(); ++i_temp) {
+    auto& gate = circ_.gates_by_level[depth][i_temp];
+
+    switch (gate->type) {
+      case utils::GateType::kMul: {
+        auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+        auto& m_in1 = preproc_.gates[g->in1]->mask; //mask代表秘密共享形式下的四个值，即四个alpha
+        auto& m_in2 = preproc_.gates[g->in2]->mask; //mask代表秘密共享形式下的四个值，即四个alpha
+        auto* pre_out =
+            static_cast<PreprocMultGate<Ring>*>(preproc_.gates[g->out].get());
+
+        auto rec_share = pre_out->mask + pre_out->mask_prod -
+                         m_in1 * wires_[g->in2] - m_in2 * wires_[g->in1]; //wires_[g->in1]和wires_[g->in2]是两个β
+        // rec_share.add(wires_[g->in1] * wires_[g->in2], id_);
+
+        for (int i = 0; i < 4; ++i) {
+          recon_shares[i].push_back(rec_share[i]);
+        }
+        break;
+      }
+
+      case utils::GateType::kCmp: {
+        auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+        
+        auto* pre_out =
+            static_cast<PreprocCmpGate<Ring>*>(preproc_.gates[g->out].get());
+        auto& m_in1 = preproc_.gates[g->in]->mask; //mask代表秘密共享形式下的四个值，即四个alpha
+        auto& m_in2 = pre_out->mask_mu_1; //mask代表秘密共享形式下的四个值，即四个alpha
+        auto& beta_mu_1 = pre_out->beta_mu_1;
+        //pre_out->mask代表α_z，pre_out->mask_prod代表alpha_{xy}
+        auto rec_share = pre_out->prev_mask + pre_out->mask_prod -
+                         m_in1 * beta_mu_1 - m_in2 * wires_[g->in]; //m_in1代表(x-y)的[]共享，beta_mu_1代表mu_1的β，m_in2代表mu_1的共享，wires_[g->in]代表(x-y)的β
+        // rec_share.add(wires_[g->in1] * wires_[g->in2], id_);
+
+        for (int i = 0; i < 4; ++i) {
+          recon_shares[i].push_back(rec_share[i]);
+        }
+        break;
+      }
+
+      case utils::GateType::kDotprod: {
+        auto* g = static_cast<utils::SIMDGate*>(gate.get());
+        auto* pre_out =
+            static_cast<PreprocDotpGate<Ring>*>(preproc_.gates[g->out].get());
+
+        auto rec_share = pre_out->mask + pre_out->mask_prod; // [α_z] +  [x]，x代表最终计算结果
+        for (size_t i = 0; i < g->in1.size(); i++) {
+          auto win1 = g->in1[i];
+          auto win2 = g->in2[i];
+          auto& m_in1 = preproc_.gates[win1]->mask;
+          auto& m_in2 = preproc_.gates[win2]->mask;
+
+          rec_share -= m_in1 * wires_[win2] + m_in2 * wires_[win1]; //对应步骤-Σ^d_1 \beta_{x_t}[\alpha_{y_t}] - Σ^d_1 \beta_{y_t}[\alpha_{x_t}]
+          // rec_share.add(wires_[win1] * wires_[win2], id_);
+        }
+
+        for (int i = 0; i < 4; i++) {
+          recon_shares[i].push_back(rec_share[i]);
+        }
+        break;
+      }
+
+      case utils::GateType::kTrdotp: {
+        auto* g = static_cast<utils::SIMDGate*>(gate.get());
+        auto* pre_out =
+            static_cast<PreprocTrDotpGate<Ring>*>(preproc_.gates[g->out].get());
+
+        auto rec_share = pre_out->mask_prod + pre_out->mask_d;
+        for (size_t i = 0; i < g->in1.size(); i++) {
+          auto win1 = g->in1[i];
+          auto win2 = g->in2[i];
+          auto& m_in1 = preproc_.gates[win1]->mask;
+          auto& m_in2 = preproc_.gates[win2]->mask;
+
+          rec_share -= (m_in1 * wires_[win2] + m_in2 * wires_[win1]);
+          // rec_share.add(wires_[win1] * wires_[win2], id_);
+        }
+
+        for (int i = 0; i < 4; i++) {
+          recon_shares[i].push_back(rec_share[i]);
+        }
+
+        break;
+      }
+
+      case utils::GateType::kRelu: {
+        auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+        
+        auto* pre_out =
+            static_cast<PreprocReluGate<Ring>*>(preproc_.gates[g->out].get());
+        auto& m_in1 = preproc_.gates[g->in]->mask; //mask代表秘密共享形式下的四个值，即四个alpha
+        auto& m_in2 = pre_out->mask_mu_1; //mask代表秘密共享形式下的四个值，即四个alpha
+        auto& beta_mu_1 = pre_out->beta_mu_1;
+        //pre_out->mask代表α_z，pre_out->mask_prod代表alpha_{xy}
+        auto rec_share = pre_out->prev_mask + pre_out->mask_prod -
+                         m_in1 * beta_mu_1 - m_in2 * wires_[g->in]; //m_in1代表(x-y)的[]共享，beta_mu_1代表mu_1的β，m_in2代表mu_1的共享，wires_[g->in]代表(x-y)的β
+        // rec_share.add(wires_[g->in1] * wires_[g->in2], id_);
+
+        for (int i = 0; i < 4; ++i) {
+          recon_shares[i].push_back(rec_share[i]);
+        }
+        break;
+      }
+
+      case utils::GateType::kMsb: {
+        auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+        msb_gates.push_back(*g);
+        break;
+      }
+
+      default:
+        break;
+    }
+  }
+
+  size_t non_relu_recon = recon_shares[0].size();
+  // if (!relu_gates.empty()) {
+  //   auto shares = reluEvaluate(relu_gates);
+  //   for (size_t i = 0; i < 4; ++i) {
+  //     recon_shares[i].insert(recon_shares[i].end(), shares[i].begin(),
+  //                            shares[i].end()); //把关于relu的重构，直接放在后面，所以访问重构的数据，需要加上non_relu_recon的索引
+  //   }
+  // }
+
+  if (!msb_gates.empty()) {
+    auto shares = msbEvaluate(msb_gates);
+    for (size_t i = 0; i < 4; ++i) {
+      recon_shares[i].insert(recon_shares[i].end(), shares[i].begin(),
+                             shares[i].end());
+    }
+  }
+
+  auto vres = reconstruct(recon_shares); //重构出beta_z
+
+  size_t idx = 0;
+  size_t relu_idx = 0;
+  size_t msb_idx = 0;
+  count = 0;
+  #pragma omp parallel for
+  for (size_t i_temp = 0; i_temp < circ_.gates_by_level[depth].size(); ++i_temp) {
+    auto& gate = circ_.gates_by_level[depth][i_temp];
+
+    // std::cout << "\rProgress: " << count <<" gate type: "<<gate->type <<std::flush;
+    // count++;
+    switch (gate->type) {
+      case utils::GateType::kAdd: {
+        auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+        wires_[g->out] = wires_[g->in1] + wires_[g->in2];//这里wires_存的是beta
+        break;
+      }
+
+      case utils::GateType::kSub: {
+        auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+        wires_[g->out] = wires_[g->in1] - wires_[g->in2];
+        break;
+      }
+
+      case utils::GateType::kMul: {
+        auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+        wires_[gate->out] = vres[idx++] + wires_[g->in1] * wires_[g->in2];
+        break;
+      }
+
+      case utils::GateType::kCmp: {
+        auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+        auto* pre_out =
+            static_cast<PreprocCmpGate<Ring>*>(preproc_.gates[g->out].get());
+        auto& beta_mu_1 = pre_out->beta_mu_1;
+        //上面已经重构了一次，得到了beta_z，直接加到这上面即可，但是还需要一次重构来获取Z的值
+        wires_[gate->out] = vres[idx] + wires_[g->in] * beta_mu_1; //for multiplication
+
+        auto& beta_mu_2 = pre_out->beta_mu_2;
+        wires_[gate->out] += beta_mu_2; //for addition
+        // preproc_.gates[gate->out]->mask = preproc_.gates[gate->out]->mask + pre_out->mask_mu_2; //for addition
+
+        //下面进行重构，获取z的值，判断比较结果。
+        std::array<std::vector<Ring>, 4> recon_shares_for_z;
+        for (int i = 0; i < 4; ++i) {
+          recon_shares_for_z[i].push_back(preproc_.gates[gate->out]->mask[i]);
+        }
+        auto sum_z = reconstruct(recon_shares_for_z); //为了重构出z
+        auto z = wires_[gate->out] - sum_z[0];
+        std::vector<BoolRing> bin = bitDecompose(z);
+        if (bin[BITS_GAMMA+BITS_BETA-1].val()) { //最高位是1，那么是负数
+          wires_[gate->out] = sum_z[0] + CMP_lESS_RESULT;
+        }
+        else {
+          wires_[gate->out] = sum_z[0] + CMP_GREATER_RESULT;
+        }
+
+        idx++;
+        break;
+      }
+
+      case utils::GateType::kDotprod: {
+        auto* g = static_cast<utils::SIMDGate*>(gate.get());
+
+        Ring sum_beta = 0;
+        for (size_t i = 0; i < g->in1.size(); i++) {
+          auto win1 = g->in1[i];
+          auto win2 = g->in2[i];
+          sum_beta += wires_[win1] * wires_[win2];
+        }
+        wires_[gate->out] = vres[idx++] + sum_beta;
+        break;
+      }
+
+      case utils::GateType::kTrdotp: {
+        auto* g = static_cast<utils::SIMDGate*>(gate.get());
+
+        Ring sum_beta = 0;
+        for (size_t i = 0; i < g->in1.size(); i++) {
+          auto win1 = g->in1[i];
+          auto win2 = g->in2[i];
+          sum_beta += wires_[win1] * wires_[win2];
+        }
+        wires_[gate->out] = (vres[idx++] + sum_beta) >> FRACTION ;
+        break;
+      }
+
+      case utils::GateType::kConstAdd: {
+        auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
+        wires_[g->out] = wires_[g->in] + g->cval;  //只需要beta加即可,alpha不用加
+        break;
+      }
+
+      case utils::GateType::kConstMul: {
+        auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
+        wires_[g->out] = wires_[g->in] * g->cval;
+        break;
+      }
+
+      case utils::GateType::kRelu: {
+        auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+        auto* pre_out =
+            static_cast<PreprocReluGate<Ring>*>(preproc_.gates[g->out].get());
+        auto& beta_mu_1 = pre_out->beta_mu_1;
+        //上面已经重构了一次，得到了beta_z，直接加到这上面即可，但是还需要一次重构来获取Z的值
+        wires_[gate->out] = vres[idx] + wires_[g->in] * beta_mu_1; //for multiplication
+
+        auto& beta_mu_2 = pre_out->beta_mu_2;
+        wires_[gate->out] += beta_mu_2; //for addition
+        // preproc_.gates[gate->out]->mask = preproc_.gates[gate->out]->mask + pre_out->mask_mu_2; //for addition
+
+        //下面进行重构，获取z的值，判断比较结果。
+        std::array<std::vector<Ring>, 4> recon_shares_for_z;
+        for (int i = 0; i < 4; ++i) {
+          recon_shares_for_z[i].push_back(preproc_.gates[gate->out]->mask[i]);
+        }
+        auto sum_z = reconstruct(recon_shares_for_z); //为了重构出z
+        auto z = wires_[gate->out] - sum_z[0];
+        std::vector<BoolRing> bin = bitDecompose(z);
+        if (bin[BITS_GAMMA+BITS_BETA-1].val()) { //最高位是1，那么是负数
+          wires_[gate->out] = sum_z[0] + 0;
+        }
+        else {
+          wires_[gate->out] = sum_z[0] + 1;
+        }
+
+        auto& m_in1_mul = preproc_.gates[g->in]->mask; //mask代表秘密共享形式下的四个值，即四个alpha
+        auto& m_in2_mul = preproc_.gates[gate->out]->mask; //mask代表秘密共享形式下的四个值，即四个alpha
+        
+        auto rec_share_for_mul = pre_out->mask + pre_out->mask_prod2 -
+                         m_in1_mul * wires_[g->out] - m_in2_mul * wires_[g->in]; //wires_[g->in1]和wires_[g->in2]是两个β
+        std::array<std::vector<Ring>, 4> recon_shares_for_mul;
+        for (int i = 0; i < 4; ++i) {
+          recon_shares_for_mul[i].push_back(rec_share_for_mul[i]);
+        }
+
+        auto mul_result = reconstruct(recon_shares_for_mul);
+        wires_[gate->out] = mul_result[0] + wires_[g->out] * wires_[g->in];
+        // preproc_.gates[gate->out]->mask = pre_out->mask_for_mul;
+        idx++;
+        break;
+      }
+
+      case utils::GateType::kMsb: {
+        if(msb_temp_value_) {
+          wires_[gate->out] = vres[non_relu_recon + relu_idx + msb_idx] + 2;
+        }
+        else {
+          wires_[gate->out] = vres[non_relu_recon + relu_idx + msb_idx] - 1;
+        }
+        
+        // std::cout<<"参与方"<<id_<<"重构出的β为"<<wires_[gate->out]<<std::endl;
+        msb_idx++;
+        break;
+      }
+
+      default:
+        break;
+    }
+  }
+
 }
 
 void OnlineEvaluator::evaluateGatesAtDepth(size_t depth) {
@@ -617,8 +1054,8 @@ void OnlineEvaluator::evaluateGatesAtDepth(size_t depth) {
         break;
     }
   }
-}
 
+}
 std::vector<Ring> OnlineEvaluator::reconstruct(
     const std::vector<ReplicatedShare<Ring>>& shares) {
   std::array<std::vector<Ring>, 4> recon_shares;

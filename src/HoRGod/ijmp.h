@@ -27,8 +27,9 @@ class ImprovedJmp {
   std::array<std::array<std::array<std::vector<uint8_t>, 5>, 5>, 5> recv_values2_;
   std::array<std::array<std::array<std::vector<uint8_t>, 5>, 5>, 5> recv_values3_;
   std::array<std::array<std::array<std::vector<uint8_t>, 5>, 5>, 5> final_recv_values_;
+  uint64_t counter=0;
 
-  static bool isHashSender(int sender, int other_sender, int receiver);
+  static bool isHashSender(int sender, int other_sender1, int other_sender2, int receiver);
 
  public:
   explicit ImprovedJmp(int my_id);

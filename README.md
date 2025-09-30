@@ -24,16 +24,30 @@ To build and run the docker image, execute the following commands from the root 
 #
 # Building the Docker image requires at least 4GB RAM. This needs to be set 
 # explicitly in case of Windows and MacOS.
-docker build -t SemiHoRGod_harper .
+docker build -t horgod_env .
+
+# or you can download the the compressed Docker image by our url
+gunzip HoRGod_env.tar.gz # decompress
+docker load -i HoRGod_env.tar # load the images
+docker tag quadsquad_harper:latest horgod_env:latest
 
 # Create and run a container.
 #
 # This should start the shell from within the container.
-docker run -it -v $PWD:/code --name SemiHoRGod_harper SemiHoRGod_harper 
+docker run -it -v $PWD:/code --name horgod_container1 horgod_env 
+docker run -it \
+    --name horgod_container1 \
+    --network host \
+    -v $PWD:/code \
+    horgod_env
 
 # The following command changes the working directory to the one containing the 
 # source code and should be run on the shell started using the previous command.
 cd /code
+
+# If you exit the container, you can enter the container using the following command:
+docker start -ai horgod_container1
+docker exec -it horgod_container1 /bin/bash
 ```
 
 ## Compilation
@@ -87,13 +101,12 @@ ctest
 ../run.sh ./benchmarks/offline_nn -n fcn
 ../run.sh ./benchmarks/offline_nn -n lenet
 
-
 ###############################################   MPC multiplication   ###############################################
 # Benchmark online phase for MPC multiplication.
-../run.sh ./benchmarks/offline_mpc_sub -g 1000000 -d 10 #-g number of multiplication || -d depth of multiplication
+../run.sh ./benchmarks/offline_mpc_sub -g 1000 -d 1000 -t 1 #-g number of multiplication || -d depth of multiplication
 
 # Benchmark offline phase for MPC multiplication.
-../run.sh ./benchmarks/online_mpc_sub -g 1000000 -d 10 #-g number of multiplication || -d depth of multiplication
+../run.sh ./benchmarks/online_mpc_sub -g 1000 -d 1000 -t 1 #-g number of multiplication || -d depth of multiplication
 
 
 ###############################################     MPC permutation    ###############################################
@@ -118,16 +131,17 @@ ctest
 # option with '--net-config <net_config.json>' where 'net_config.json' is a
 # JSON file containing the IPs of the parties. A template is given in the
 # repository root.
-./benchmarks/online_mpc -p $PID --localhost -g 100 -d 10 #command example
+./benchmarks/online_mpc -p $PID --localhost -g 1000 -d 1000 -t 1 #command example
 
 
-./benchmarks/online_mpc -p 0 --localhost -g 100 -d 10 -t 1
-./benchmarks/online_mpc -p 1 --localhost -g 100 -d 10 -t 1
-./benchmarks/online_mpc -p 2 --localhost -g 100 -d 10 -t 1
-./benchmarks/online_mpc -p 3 --localhost -g 100 -d 10 -t 1
-./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10 -t 1
+./benchmarks/online_mpc -p 10 --net-config ../net_config.json -g 1000 -d 1000 -t 1
+./benchmarks/online_mpc -p 11 --net-config ../net_config.json -g 1000 -d 1000 -t 1
+./benchmarks/online_mpc -p 12 --net-config ../net_config.json -g 1000 -d 1000 -t 1
+./benchmarks/online_mpc -p 13 --net-config ../net_config.json -g 1000 -d 1000 -t 1
+./benchmarks/online_mpc -p 14 --net-config ../net_config.json -g 1000 -d 1000 -t 1
 ```
 
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000 -t 1 -p 10
 ./benchmarks/online_perm  --localhost -g 100 -d 10 -t 1 -p 0
 
 ## How to Debug
@@ -148,4 +162,133 @@ gdb --args ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10  #using gdb wit
 
 # If you run the test code, the following command used to fix the thread for debugging
 (gdb) set scheduler-locking on/step/off
+```
+
+
+## All test command for both 5PC and 7PC
+We note that every machine only runs one command
+
+### Multiplication online phase
+
+#### Running time and communication
+```sh
+# multiplication online
+
+## depth 1 and 100w multiplication per level
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 0
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 1
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 2
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 3
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 4
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 5
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 6
+
+## depth 20 and 5w multiplication per level
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 0
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 1
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 2
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 3
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 4
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 5
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 6
+
+## depth 100 and 1w multiplication per level
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 0
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 1
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 2
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 3
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 4
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 5
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 6
+
+## depth 1000 and 1k multiplication per level
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 0
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 1
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 2
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 3
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 4
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 5
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 6
+```
+
+#### Throughput
+```sh
+# multiplication online
+
+## depth 1 and 100w multiplication per level
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 0
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 1
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 2
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 3
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 4
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 5
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 6
+
+## depth 20 and 5w multiplication per level
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 0
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 1
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 2
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 3
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 4
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 5
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 6
+
+## depth 100 and 1w multiplication per level
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 0
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 1
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 2
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 3
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 4
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 5
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 6
+
+## depth 1000 and 1k multiplication per level
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 0
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 1
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 2
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 3
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 4
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 5
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 6
+```
+
+### Multiplication offline phase
+```sh
+# multiplication offline
+
+## depth 1 and 100w multiplication per level
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 0
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 1
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 2
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 3
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 4
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 5
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 6
+
+## depth 20 and 5w multiplication per level
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 0
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 1
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 2
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 3
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 4
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 5
+./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 6
+
+## depth 100 and 1w multiplication per level
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 0
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 1
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 2
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 3
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 4
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 5
+./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 6
+
+## depth 1000 and 1k multiplication per level
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 0
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 1
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 2
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 3
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 4
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 5
+./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 6
 ```

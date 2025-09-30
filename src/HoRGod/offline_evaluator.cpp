@@ -486,7 +486,7 @@ PreprocCircuit<Ring> OfflineEvaluator::run(const utils::LevelOrderedCircuit& cir
     const std::unordered_map<utils::wire_t, int>& input_pid_map,
     size_t security_param, int pid, emp::PRG& prg) {
   // setWireMasks(input_pid_map);
-  offline_setwire(circ, input_pid_map, security_param, id_, prg);
+  preproc_ = offline_setwire(circ, input_pid_map, security_param, id_, prg);
   return std::move(preproc_);
 }
 
@@ -496,7 +496,6 @@ emp::block OfflineEvaluator::commonCoinKey() {
   std::vector<ReplicatedShare<Ring>> key_shares(2);
   randomShare(rgen_, key_shares[0]);
   randomShare(rgen_, key_shares[1]);
-
   OnlineEvaluator oeval(id_, network_, PreprocCircuit<Ring>(),
                         utils::LevelOrderedCircuit(), security_param_, tpool_);
   auto key = oeval.reconstruct(key_shares);

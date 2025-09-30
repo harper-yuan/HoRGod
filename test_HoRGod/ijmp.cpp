@@ -1,7 +1,6 @@
 #define BOOST_TEST_MODULE jump
 #include <emp-tool/emp-tool.h>
 #include <io/netmp.h>
-#include <HoRGod/jump_provider.h>
 #include <HoRGod/ijmp.h>
 #include <boost/test/included/unit_test.hpp>
 #include <future>

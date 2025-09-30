@@ -132,7 +132,6 @@ void benchmark(const bpo::variables_map& opts) {
   utils::LevelOrderedCircuit circ = generateCircuit(gates).orderGatesByLevel();;
 
   for (size_t r = 0; r < repeat; ++r) {
-
     emp::PRG prg(&seed, 0);
     vector<Ring> data_vector = generateRandomPermutation(prg, gates);
     vector<Ring> permutation_vector = generateRandomPermutation(prg, gates);
@@ -143,8 +142,6 @@ void benchmark(const bpo::variables_map& opts) {
     OnlineEvaluator online_eval(pid, network1, std::move(preproc), circ, security_param, 1);
     // network1->sync();
 
-
-    
     network1->sync();
     online_eval.setInputs_perm(data_vector, permutation_vector);
     StatsPoint start(*network1);

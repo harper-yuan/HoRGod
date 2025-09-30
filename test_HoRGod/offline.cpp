@@ -5,7 +5,6 @@
 #include <io/netmp.h>
 #include <HoRGod/helpers.h>
 #include <HoRGod/offline_evaluator.h>
-#include <HoRGod/ot_provider.h>
 #include <HoRGod/rand_gen_pool.h>
 #include <utils/circuit.h>
 
@@ -81,8 +80,6 @@ BOOST_AUTO_TEST_CASE(input_circuit) {
         auto mask_i = preproc_i.gates[k]->mask.commonTreeValues(i, j);
         auto mask_j = preproc_j.gates[k]->mask.commonTreeValues(j, i);
         BOOST_TEST(mask_i == mask_j);
-
-        
       }
     }
   }
