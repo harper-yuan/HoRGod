@@ -596,96 +596,96 @@ void OnlineEvaluator::evaluateGatesAtDepth_parallel(size_t depth, size_t computa
         break;
       }
 
-      // case utils::GateType::kSub: {
-      //   auto* g = static_cast<utils::FIn2Gate*>(gate.get());
-      //   wires_[g->out] = wires_[g->in1] - wires_[g->in2];
-      //   break;
-      // }
+      case utils::GateType::kSub: {
+        auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+        wires_[g->out] = wires_[g->in1] - wires_[g->in2];
+        break;
+      }
 
-      // case utils::GateType::kMul: {
-      //   auto* g = static_cast<utils::FIn2Gate*>(gate.get());
-      //   // wires_[gate->out] = vres[idx++] + wires_[g->in1] * wires_[g->in2];
-      //    wires_[gate->out] = vres[idx] + wires_[g->in1] * wires_[g->in2];
-      //    std::cout<<"idx: "<<idx<<endl;
-      //   break;
-      // }
+      case utils::GateType::kMul: {
+        auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+        // wires_[gate->out] = vres[idx++] + wires_[g->in1] * wires_[g->in2];
+         wires_[gate->out] = vres[idx] + wires_[g->in1] * wires_[g->in2];
+         std::cout<<"idx: "<<idx<<endl;
+        break;
+      }
 
-      // case utils::GateType::kCmp: {
-      //   auto* g = static_cast<utils::FIn1Gate*>(gate.get());
-      //   auto* pre_out =
-      //       static_cast<PreprocCmpGate<Ring>*>(preproc_.gates[g->out].get());
-      //   auto& beta_mu_1 = pre_out->beta_mu_1;
-      //   //上面已经重构了一次，得到了beta_z，直接加到这上面即可，但是还需要一次重构来获取Z的值
-      //   wires_[gate->out] = vres[idx++] + wires_[g->in] * beta_mu_1; //for multiplication
+      case utils::GateType::kCmp: {
+        auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+        auto* pre_out =
+            static_cast<PreprocCmpGate<Ring>*>(preproc_.gates[g->out].get());
+        auto& beta_mu_1 = pre_out->beta_mu_1;
+        //上面已经重构了一次，得到了beta_z，直接加到这上面即可，但是还需要一次重构来获取Z的值
+        wires_[gate->out] = vres[idx++] + wires_[g->in] * beta_mu_1; //for multiplication
 
-      //   auto& beta_mu_2 = pre_out->beta_mu_2;
-      //   wires_[gate->out] += beta_mu_2; //for addition
-      //   // preproc_.gates[gate->out]->mask = preproc_.gates[gate->out]->mask + pre_out->mask_mu_2; //for addition
+        auto& beta_mu_2 = pre_out->beta_mu_2;
+        wires_[gate->out] += beta_mu_2; //for addition
+        // preproc_.gates[gate->out]->mask = preproc_.gates[gate->out]->mask + pre_out->mask_mu_2; //for addition
 
-      //   //下面进行重构，获取z的值，判断比较结果。
-      //   for (int i = 0; i < 4; ++i) {
-      //     recon_shares_for_z[i].push_back(preproc_.gates[gate->out]->mask[i]);
-      //   }
-      //   break;
-      // }
+        //下面进行重构，获取z的值，判断比较结果。
+        for (int i = 0; i < 4; ++i) {
+          recon_shares_for_z[i].push_back(preproc_.gates[gate->out]->mask[i]);
+        }
+        break;
+      }
 
-      // case utils::GateType::kDotprod: {
-      //   auto* g = static_cast<utils::SIMDGate*>(gate.get());
+      case utils::GateType::kDotprod: {
+        auto* g = static_cast<utils::SIMDGate*>(gate.get());
 
-      //   Ring sum_beta = 0;
-      //   for (size_t i = 0; i < g->in1.size(); i++) {
-      //     auto win1 = g->in1[i];
-      //     auto win2 = g->in2[i];
-      //     sum_beta += wires_[win1] * wires_[win2];
-      //   }
-      //   wires_[gate->out] = vres[idx++] + sum_beta;
-      //   break;
-      // }
+        Ring sum_beta = 0;
+        for (size_t i = 0; i < g->in1.size(); i++) {
+          auto win1 = g->in1[i];
+          auto win2 = g->in2[i];
+          sum_beta += wires_[win1] * wires_[win2];
+        }
+        wires_[gate->out] = vres[idx++] + sum_beta;
+        break;
+      }
 
-      // case utils::GateType::kTrdotp: {
-      //   auto* g = static_cast<utils::SIMDGate*>(gate.get());
+      case utils::GateType::kTrdotp: {
+        auto* g = static_cast<utils::SIMDGate*>(gate.get());
 
-      //   Ring sum_beta = 0;
-      //   for (size_t i = 0; i < g->in1.size(); i++) {
-      //     auto win1 = g->in1[i];
-      //     auto win2 = g->in2[i];
-      //     sum_beta += wires_[win1] * wires_[win2];
-      //   }
-      //   wires_[gate->out] = (vres[idx++] + sum_beta) >> FRACTION ;
-      //   break;
-      // }
+        Ring sum_beta = 0;
+        for (size_t i = 0; i < g->in1.size(); i++) {
+          auto win1 = g->in1[i];
+          auto win2 = g->in2[i];
+          sum_beta += wires_[win1] * wires_[win2];
+        }
+        wires_[gate->out] = (vres[idx++] + sum_beta) >> FRACTION ;
+        break;
+      }
 
-      // case utils::GateType::kConstAdd: {
-      //   auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
-      //   wires_[g->out] = wires_[g->in] + g->cval;  //只需要beta加即可,alpha不用加
-      //   break;
-      // }
+      case utils::GateType::kConstAdd: {
+        auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
+        wires_[g->out] = wires_[g->in] + g->cval;  //只需要beta加即可,alpha不用加
+        break;
+      }
 
-      // case utils::GateType::kConstMul: {
-      //   auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
-      //   wires_[g->out] = wires_[g->in] * g->cval;
-      //   break;
-      // }
+      case utils::GateType::kConstMul: {
+        auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
+        wires_[g->out] = wires_[g->in] * g->cval;
+        break;
+      }
 
-      // case utils::GateType::kRelu: {
-      //   auto* g = static_cast<utils::FIn1Gate*>(gate.get());
-      //   auto* pre_out =
-      //       static_cast<PreprocReluGate<Ring>*>(preproc_.gates[g->out].get());
-      //   auto& beta_mu_1 = pre_out->beta_mu_1;
-      //   //上面已经重构了一次，得到了beta_z，直接加到这上面即可，但是还需要一次重构来获取Z的值
-      //   wires_[gate->out] = vres[idx++] + wires_[g->in] * beta_mu_1; //for multiplication
+      case utils::GateType::kRelu: {
+        auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+        auto* pre_out =
+            static_cast<PreprocReluGate<Ring>*>(preproc_.gates[g->out].get());
+        auto& beta_mu_1 = pre_out->beta_mu_1;
+        //上面已经重构了一次，得到了beta_z，直接加到这上面即可，但是还需要一次重构来获取Z的值
+        wires_[gate->out] = vres[idx++] + wires_[g->in] * beta_mu_1; //for multiplication
 
-      //   auto& beta_mu_2 = pre_out->beta_mu_2;
-      //   wires_[gate->out] += beta_mu_2; //for addition
-      //   // preproc_.gates[gate->out]->mask = preproc_.gates[gate->out]->mask + pre_out->mask_mu_2; //for addition
+        auto& beta_mu_2 = pre_out->beta_mu_2;
+        wires_[gate->out] += beta_mu_2; //for addition
+        // preproc_.gates[gate->out]->mask = preproc_.gates[gate->out]->mask + pre_out->mask_mu_2; //for addition
 
-      //   //下面进行重构，获取z的值，判断比较结果。
-      //   // std::array<std::vector<Ring>, 4> recon_shares_for_z;
-      //   for (int i = 0; i < 4; ++i) {
-      //     recon_shares_for_z[i].push_back(preproc_.gates[gate->out]->mask[i]);
-      //   }
-      //   break;
-      // }
+        //下面进行重构，获取z的值，判断比较结果。
+        // std::array<std::vector<Ring>, 4> recon_shares_for_z;
+        for (int i = 0; i < 4; ++i) {
+          recon_shares_for_z[i].push_back(preproc_.gates[gate->out]->mask[i]);
+        }
+        break;
+      }
 
       default:
         break;
