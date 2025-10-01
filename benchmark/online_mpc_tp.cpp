@@ -53,7 +53,8 @@ void benchmark(const bpo::variables_map& opts) {
   auto gates = opts["gates"].as<size_t>();
   auto pid = opts["pid"].as<size_t>();
   auto security_param = opts["security-param"].as<size_t>();
-  auto threads = opts["threads"].as<size_t>();
+  auto cm_threads = opts["cm-threads"].as<size_t>();
+  auto cp_threads = opts["cp-threads"].as<size_t>();
   auto seed = opts["seed"].as<size_t>();
   auto repeat = opts["repeat"].as<size_t>();
   auto port = opts["port"].as<int>();
@@ -90,7 +91,8 @@ void benchmark(const bpo::variables_map& opts) {
   output_data["details"] = {{"gates", gates},
                             {"pid", pid},
                             {"security_param", security_param},
-                            {"threads", threads},
+                            {"cm-threads", cm_threads},
+                            {"cp-threads", cp_threads},
                             {"seed", seed},
                             {"repeat", repeat}};
   output_data["benchmarks"] = json::array();
@@ -116,7 +118,7 @@ void benchmark(const bpo::variables_map& opts) {
         OfflineEvaluator::dummy(circ, input_pid_map, security_param, pid, prg);
 
     OnlineEvaluator eval(pid, network1, std::move(preproc), circ, security_param,
-                         threads, seed);
+                         cm_threads, seed);
 
     eval.setRandomInputs();
     
@@ -130,7 +132,7 @@ void benchmark(const bpo::variables_map& opts) {
     CommPoint net2_st(*network2);
     TimePoint start;
     for (size_t i = 0; i < circ.gates_by_level.size(); ++i) {
-      eval.evaluateGatesAtDepth_parallel(i, threads);
+      eval.evaluateGatesAtDepth_parallel(i, cp_threads);
     }
     TimePoint end;
     CommPoint net1_ed(*network1);
@@ -186,7 +188,8 @@ bpo::options_description programOptions() {
     ("pid,p", bpo::value<size_t>()->required(), "Party ID.")
     ("depth,d", bpo::value<size_t>()->required(), "Multiplicative depth of circuit.")
     ("security-param", bpo::value<size_t>()->default_value(128), "Security parameter in bits.")
-    ("threads,t", bpo::value<size_t>()->default_value(1), "Number of threads (recommended 6).")
+    ("cm-threads", bpo::value<size_t>()->default_value(1), "Number of threads for communication (recommended value is at least 7).")
+    ("cp-threads", bpo::value<size_t>()->default_value(1), "Number of threads for computation (recommended value close to number of cores).")
     ("seed", bpo::value<size_t>()->default_value(200), "Value of the random seed.")
     ("net-config", bpo::value<std::string>(), "Path to JSON file containing network details of all parties.")
     ("localhost", bpo::bool_switch(), "All parties are on same machine.")

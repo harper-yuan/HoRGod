@@ -26,7 +26,8 @@ void benchmark(const bpo::variables_map& opts) {
 
   auto pid = opts["pid"].as<size_t>();
   auto security_param = opts["security-param"].as<size_t>();
-  auto threads = opts["threads"].as<size_t>();
+  auto cm_threads = opts["cm-threads"].as<size_t>();
+  auto cp_threads = opts["cp-threads"].as<size_t>();
   auto seed = opts["seed"].as<size_t>();
   auto repeat = opts["repeat"].as<size_t>();
   auto port = opts["port"].as<int>();
@@ -61,7 +62,8 @@ void benchmark(const bpo::variables_map& opts) {
   json output_data;
   output_data["details"] = {{"pid", pid},
                             {"security_param", security_param},
-                            {"threads", threads},
+                            {"cm-threads", cm_threads},
+                            {"cp-threads", cp_threads},
                             {"seed", seed},
                             {"neural_network", neural_network},
                             {"repeat", repeat},
@@ -103,7 +105,7 @@ void benchmark(const bpo::variables_map& opts) {
         OfflineEvaluator::dummy(circ, input_pid_map, security_param, pid, prg);
 
     OnlineEvaluator eval(pid, network, std::move(preproc), circ, security_param,
-                         threads, seed);
+                         cm_threads, seed);
 
     network->sync();
 
@@ -113,7 +115,7 @@ void benchmark(const bpo::variables_map& opts) {
     TimePoint start_t;
     for (size_t _ = 0; _ < num_queries; _++) {
         for (size_t i = 0; i < circ.gates_by_level.size(); ++i) {
-            eval.evaluateGatesAtDepth_parallel(i, threads);
+            eval.evaluateGatesAtDepth_parallel(i, cp_threads);
         }
     }
     TimePoint end_t;
@@ -167,7 +169,8 @@ bpo::options_description programOptions() {
     ("batch-size", bpo::value<size_t>()->default_value(1), "Input batch size.")
     ("pid,p", bpo::value<size_t>()->required(), "Party ID.")
     ("security-param", bpo::value<size_t>()->default_value(128), "Security parameter in bits.")
-    ("threads,t", bpo::value<size_t>()->default_value(1), "Number of threads (recommended 6).")
+    ("cm-threads", bpo::value<size_t>()->default_value(1), "Number of threads for communication (recommended value is at least 7).")
+    ("cp-threads", bpo::value<size_t>()->default_value(1), "Number of threads for computation (recommended value close to number of cores).")
     ("seed", bpo::value<size_t>()->default_value(200), "Value of the random seed.")
     ("net-config", bpo::value<std::string>(), "Path to JSON file containing network details of all parties.")
     ("localhost", bpo::bool_switch(), "All parties are on same machine.")

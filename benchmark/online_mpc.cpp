@@ -9,7 +9,7 @@
 #include <memory>
 
 #include "utils.h"
-
+#include "utils/circuit.h"
 using namespace HoRGod;
 using json = nlohmann::json;
 namespace bpo = boost::program_options;
@@ -42,6 +42,31 @@ utils::Circuit<Ring> generateCircuit(size_t gates_per_level, size_t depth) {
   return circ;
 }
 
+
+utils::Circuit<Ring> generateReluCircuit(size_t gates_per_level, size_t depth) {
+  utils::Circuit<Ring> circ;
+
+  std::vector<utils::wire_t> level_inputs(gates_per_level);
+  std::generate(level_inputs.begin(), level_inputs.end(),
+                [&]() { return circ.newInputWire(); });
+
+  for (size_t d = 0; d < depth; ++d) {
+    std::vector<utils::wire_t> level_outputs(gates_per_level);
+
+    for (size_t i = 0; i < gates_per_level; ++i) {
+      // 为每个输入添加 ReLU 激活函数
+      level_outputs[i] = circ.addGate(utils::GateType::kRelu, level_inputs[i]);
+    }
+
+    level_inputs = std::move(level_outputs);
+  }
+
+  for (auto i : level_inputs) {
+    circ.setAsOutput(i);
+  }
+
+  return circ;
+}
 void benchmark(const bpo::variables_map& opts) {
   bool save_output = false;
   std::string save_file;
@@ -58,6 +83,7 @@ void benchmark(const bpo::variables_map& opts) {
   auto seed = opts["seed"].as<size_t>();
   auto repeat = opts["repeat"].as<size_t>();
   auto port = opts["port"].as<int>();
+  auto gate_type = opts["gate-type"].as<std::string>();
 
   std::shared_ptr<io::NetIOMP<5>> network = nullptr;
   if (opts["localhost"].as<bool>()) {
@@ -89,6 +115,7 @@ void benchmark(const bpo::variables_map& opts) {
                             {"security_param", security_param},
                             {"threads", threads},
                             {"seed", seed},
+                            {"gate_type", gate_type},
                             {"repeat", repeat}};
   output_data["benchmarks"] = json::array();
 
@@ -98,7 +125,19 @@ void benchmark(const bpo::variables_map& opts) {
   }
   std::cout << std::endl;
 
-  auto circ = generateCircuit(gates_per_level, depth).orderGatesByLevel();
+  HoRGod::utils::LevelOrderedCircuit circ;
+  
+  if(gate_type == "kMul") {
+    circ = generateCircuit(gates_per_level, depth).orderGatesByLevel();
+  }
+  else if (gate_type == "kRelu")
+  {
+    circ = generateReluCircuit(gates_per_level, depth).orderGatesByLevel();
+  }
+  else {
+    circ = generateCircuit(gates_per_level, depth).orderGatesByLevel();
+  }
+
   std::cout << "--- Circuit ---\n";
   std::cout << circ << std::endl;
 
@@ -173,6 +212,7 @@ bpo::options_description programOptions() {
     ("localhost", bpo::bool_switch(), "All parties are on same machine.")
     ("port", bpo::value<int>()->default_value(10000), "Base port for networking.")
     ("output,o", bpo::value<std::string>(), "File to save benchmarks.")
+    ("gate-type", bpo::value<std::string>()->default_value("kMul"), "Type of gates.")
     ("repeat,r", bpo::value<size_t>()->default_value(1), "Number of times to run benchmarks.");
 
   return desc;
