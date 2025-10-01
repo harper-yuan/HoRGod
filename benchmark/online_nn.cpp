@@ -52,7 +52,6 @@ void benchmark(const bpo::variables_map& opts) {
       ipaddress[i] = netdata[i].get<std::string>();
       ip[i] = ipaddress[i].data();
     }
-
     network = std::make_shared<io::NetIOMP<5>>(pid, port, ip.data(), false);
   }
 
