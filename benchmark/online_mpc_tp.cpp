@@ -38,7 +38,6 @@ utils::Circuit<Ring> generateCircuit(size_t gates_per_level, size_t depth) {
   for (auto i : level_inputs) {
     circ.setAsOutput(i);
   }
-
   return circ;
 }
 

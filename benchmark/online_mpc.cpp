@@ -42,6 +42,34 @@ utils::Circuit<Ring> generateCircuit(size_t gates_per_level, size_t depth) {
   return circ;
 }
 
+utils::Circuit<Ring> generateTrdotpCircuit(size_t gates_per_level, size_t depth) {
+  utils::Circuit<Ring> circ;
+
+  // 初始化输入向量
+  std::vector<utils::wire_t> vwa(gates_per_level);
+  std::vector<utils::wire_t> vwb(gates_per_level);
+
+  std::generate(vwa.begin(), vwa.end(), [&]() { return circ.newInputWire(); });
+  std::generate(vwb.begin(), vwb.end(), [&]() { return circ.newInputWire(); });
+
+  utils::wire_t wdotp;
+
+  // 可以堆叠多个层次的截断向量内积
+  for (size_t d = 0; d < depth; ++d) {
+    wdotp = circ.addGate(utils::GateType::kTrdotp, vwa, vwb);
+
+    // 下一层把结果当作新的输入向量的第一个元素，其他补新输入
+    vwa.clear();
+    vwb.clear();
+    vwa.push_back(wdotp);
+    // vwb.push_back(circ.newInputWire());  // 可选：用新的输入和之前的结果结合
+  }
+
+  circ.setAsOutput(wdotp);
+
+  // 最后按层次排序电路
+  return circ;
+}
 
 utils::Circuit<Ring> generateReluCircuit(size_t gates_per_level, size_t depth) {
   utils::Circuit<Ring> circ;
@@ -67,6 +95,7 @@ utils::Circuit<Ring> generateReluCircuit(size_t gates_per_level, size_t depth) {
 
   return circ;
 }
+
 void benchmark(const bpo::variables_map& opts) {
   bool save_output = false;
   std::string save_file;
@@ -133,6 +162,9 @@ void benchmark(const bpo::variables_map& opts) {
   else if (gate_type == "kRelu")
   {
     circ = generateReluCircuit(gates_per_level, depth).orderGatesByLevel();
+  }
+  else if (gate_type == "kTrdotp") {
+    circ = generateTrdotpCircuit(gates_per_level, depth).orderGatesByLevel();
   }
   else {
     circ = generateCircuit(gates_per_level, depth).orderGatesByLevel();
