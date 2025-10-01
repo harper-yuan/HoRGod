@@ -33,19 +33,30 @@ using namespace HoRGod;
 using json = nlohmann::json;
 namespace bpo = boost::program_options;
 
-utils::Circuit<Ring> generateCircuit(size_t num_mult_gates) {
+utils::Circuit<Ring> generateCircuit(size_t gates_per_level, size_t depth) {
   utils::Circuit<Ring> circ;
 
-  std::vector<utils::wire_t> inputs(num_mult_gates);
-  std::generate(inputs.begin(), inputs.end(),
+  std::vector<utils::wire_t> level_inputs(gates_per_level);
+  std::generate(level_inputs.begin(), level_inputs.end(),
                 [&]() { return circ.newInputWire(); });
 
-  std::vector<utils::wire_t> outputs(num_mult_gates);
-  for (size_t i = 0; i < num_mult_gates - 1; ++i) {
-    outputs[i] = circ.addGate(utils::GateType::kMul, inputs[i], inputs[i + 1]);
+  for (size_t d = 0; d < depth; ++d) {
+    std::vector<utils::wire_t> level_outputs(gates_per_level);
+
+    for (size_t i = 0; i < gates_per_level - 1; ++i) {
+      level_outputs[i] = circ.addGate(utils::GateType::kMul, level_inputs[i],
+                                      level_inputs[i + 1]);
+    }
+    level_outputs[gates_per_level - 1] =
+        circ.addGate(utils::GateType::kMul, level_inputs[gates_per_level - 1],
+                     level_inputs[0]);
+
+    level_inputs = std::move(level_outputs);
   }
-  outputs[num_mult_gates - 1] = circ.addGate(
-      utils::GateType::kMul, inputs[num_mult_gates - 1], inputs[0]);
+
+  for (auto i : level_inputs) {
+    circ.setAsOutput(i);
+  }
 
   return circ;
 }
@@ -60,6 +71,7 @@ void benchmark(const bpo::variables_map& opts) {
 
   auto gates = opts["gates"].as<size_t>();
   auto pid = opts["pid"].as<size_t>();
+  auto depth = opts["depth"].as<size_t>();
   auto security_param = opts["security-param"].as<size_t>();
   auto cm_threads = opts["cm-threads"].as<size_t>();
   auto cp_threads = opts["cp-threads"].as<size_t>();
@@ -97,6 +109,7 @@ void benchmark(const bpo::variables_map& opts) {
   json output_data;
   output_data["details"] = {{"gates", gates},
                             {"pid", pid},
+                            {"depth", depth},
                             {"security_param", security_param},
                             {"cm_threads", cm_threads},
                             {"cp_threads", cp_threads},
@@ -110,7 +123,7 @@ void benchmark(const bpo::variables_map& opts) {
   }
   std::cout << std::endl;
 
-  auto circ = generateCircuit(gates).orderGatesByLevel();
+  auto circ = generateCircuit(gates, depth).orderGatesByLevel();
 
   std::unordered_map<utils::wire_t, int> input_pid_map;
   for (const auto& g : circ.gates_by_level[0]) {
@@ -177,6 +190,7 @@ bpo::options_description programOptions() {
   desc.add_options()
     ("gates,g", bpo::value<size_t>()->required(), "Number of multiplication gates.")
     ("pid,p", bpo::value<size_t>()->required(), "Party ID.")
+    ("depth,d", bpo::value<size_t>()->required(), "Multiplicative depth of circuit.")
     ("security-param", bpo::value<size_t>()->default_value(128), "Security parameter in bits.")
     ("cm-threads", bpo::value<size_t>()->default_value(1), "Number of threads for communication (recommended 6).")
     ("cp-threads", bpo::value<size_t>()->default_value(1), "Number of threads for computation.")

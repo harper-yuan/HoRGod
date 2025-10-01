@@ -584,7 +584,7 @@ void OnlineEvaluator::evaluateGatesAtDepth_parallel(size_t depth, size_t computa
   }
 
   auto vres = reconstruct(recon_shares); //重构出beta_z
-  std::cout<<"vres 大小："<<vres.size()<<endl;
+  // std::cout<<"vres 大小："<<vres.size()<<endl;
   size_t idx = 0;
   #pragma omp parallel for
   for (size_t i_temp = 0; i_temp < circ_.gates_by_level[depth].size(); ++i_temp) {
@@ -606,7 +606,7 @@ void OnlineEvaluator::evaluateGatesAtDepth_parallel(size_t depth, size_t computa
         auto* g = static_cast<utils::FIn2Gate*>(gate.get());
         // wires_[gate->out] = vres[idx++] + wires_[g->in1] * wires_[g->in2];
          wires_[gate->out] = vres[idx] + wires_[g->in1] * wires_[g->in2];
-         std::cout<<"idx: "<<idx<<endl;
+        //  std::cout<<"idx: "<<idx<<endl;
         break;
       }
 
