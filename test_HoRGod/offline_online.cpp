@@ -318,7 +318,7 @@ BOOST_DATA_TEST_CASE(depth_2_circuit,
       emp::PRG prg(&seed, 0);
       OfflineEvaluator offline_eval(i, std::move(network_offline), nullptr, level_circ, SECURITY_PARAM, cm_threads);
       // auto preproc = 
-      auto preproc = offline_eval.offline_setwire(level_circ, input_pid_map, SECURITY_PARAM, i, prg); //每个i需要预处理
+      auto preproc = offline_eval.offline_setwire_mul_relu_trdotp(level_circ, input_pid_map, SECURITY_PARAM, i, prg); //每个i需要预处理
 
       // OfflineEvaluator::dummy(level_circ, input_pid_map,
       //                                        SECURITY_PARAM, i, prg);

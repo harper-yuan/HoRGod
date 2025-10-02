@@ -214,7 +214,7 @@ void benchmark(const bpo::variables_map& opts) {
 
     nlohmann::json rbench;
     emp::PRG prg(&seed, 0);
-    BENCHMARK(rbench, "offline_setwire", eval.offline_setwire, circ, input_pid_map, security_param, pid, prg);
+    BENCHMARK(rbench, "offline_setwire", eval.offline_setwire_mul_relu_trdotp, circ, input_pid_map, security_param, pid, prg);
     // BENCHMARK(rbench, "set_wire_masks", eval.setWireMasks, input_pid_map);
     // BENCHMARK(rbench, "ab_terms", eval.computeABCrossTerms);
     // BENCHMARK(rbench, "distributed_zkp", eval.distributedZKP);

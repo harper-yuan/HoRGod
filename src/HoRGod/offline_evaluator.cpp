@@ -232,6 +232,9 @@ ReplicatedShare<Ring> OfflineEvaluator::compute_prod_mask(ReplicatedShare<Ring> 
         //按顺序排序，这样其他发送者的发送参数是一样的，接收者也用一样的接受参数接受数据
         jump_.jumpUpdate(min, mid, max, other1, (size_t) sizeof(Ring), &x_m);
         jump_.jumpUpdate(min, mid, max, other2, (size_t) sizeof(Ring), &x_m);
+        // std::cout<<"传输2个数据"<<endl;
+        // std::cout << min << ", " << mid << ", " << max << " -> " << other1 << std::endl;
+        // std::cout << min << ", " << mid << ", " << max << " -> " << other2 << std::endl;
       }
     }
   }
@@ -263,7 +266,167 @@ ReplicatedShare<Ring> OfflineEvaluator::compute_prod_mask(ReplicatedShare<Ring> 
   return mask_prod;
 }
 
+
+ReplicatedShare<Ring> OfflineEvaluator::compute_prod_mask_part1(ReplicatedShare<Ring> mask_in1, ReplicatedShare<Ring> mask_in2) {
+  ReplicatedShare<Ring> mask_prod;
+  mask_prod.init_zero();
+  
+  //①计算α_xy = α_x * α_y的共享，除了要接受消息，还要发送消息
+  for(int i = 0; i<5; i++) {
+    for (int j = i+1; j<5; j++) {
+      if(i == id_ || j == id_) {
+        //无法生成α_{xyij}，需要接受收消息，这种情况会发送四次
+        // Ring x_m;
+        auto [min, mid, max] = findRemainingNumbers(i, j);
+        jump_.jumpUpdate(min, mid, max, id_, (size_t) sizeof(Ring), nullptr);
+      }
+      else {
+        //发送消息
+        auto [min, mid, max] = sortThreeNumbers(id_, i, j); //这三个人可以计算的值有
+        auto [other1, other2] = findRemainingNumbers(min, mid, max); //一定有other1<ohter2
+        //计算α_{xy,ohter1,other2}
+        auto alpha_x_y_other1_other2 = mask_in1[idxFromSenderAndReceiver(id_, other1)] * mask_in2[idxFromSenderAndReceiver(id_, other2)]+
+                                        mask_in1[idxFromSenderAndReceiver(id_, other2)] * mask_in2[idxFromSenderAndReceiver(id_, other1)];
+        if (min == 0 && mid == 1 && max == 2) {
+          alpha_x_y_other1_other2 += mask_in1[idxFromSenderAndReceiver(id_, 3)] * mask_in2[idxFromSenderAndReceiver(id_, 3)] + 
+                                      mask_in1[idxFromSenderAndReceiver(id_, 4)] * mask_in2[idxFromSenderAndReceiver(id_, 4)];
+        }
+        else if (min == 2 && mid == 3 && max == 4) {
+          alpha_x_y_other1_other2 += mask_in1[idxFromSenderAndReceiver(id_, 0)] * mask_in2[idxFromSenderAndReceiver(id_, 0)] + 
+                                      mask_in1[idxFromSenderAndReceiver(id_, 1)] * mask_in2[idxFromSenderAndReceiver(id_, 1)];
+        }
+        else if (min == 0 && mid == 1 && max == 3) {
+          alpha_x_y_other1_other2 += mask_in1[idxFromSenderAndReceiver(id_, 2)] * mask_in2[idxFromSenderAndReceiver(id_, 2)];
+        }
+        //然后把数据share出去
+        auto alpha_x_y_other1_other2_mask = jshShare(id_, rgen_, min, mid, max);
+        auto x_m = alpha_x_y_other1_other2 - (min+mid+max+other1);
+        alpha_x_y_other1_other2_mask[idxFromSenderAndReceiver(id_, other2)] = x_m;
+
+        //自己把最终结果加上
+        mask_prod += alpha_x_y_other1_other2_mask;
+        //按顺序排序，这样其他发送者的发送参数是一样的，接收者也用一样的接受参数接受数据
+        jump_.jumpUpdate(min, mid, max, other1, (size_t) sizeof(Ring), &x_m);
+        // if(other1 == 0)
+        // std::cout<<min<<" "<<mid<<" "<<max<<" "<<"传输"<<x_m<<"给"<<other1<<endl;
+        // sleep(0.1);
+        jump_.jumpUpdate(min, mid, max, other2, (size_t) sizeof(Ring), &x_m);
+        // std::cout << min << ", " << mid << ", " << max << " -> " << other1 << std::endl;
+        // std::cout << min << ", " << mid << ", " << max << " -> " << other2 << std::endl;
+        // if(other2 == 0)
+        // std::cout<<min<<" "<<mid<<" "<<max<<" "<<"传输"<<x_m<<"给"<<other2<<endl;
+        // sleep(0.1);
+      }
+    }
+  }
+  return mask_prod;
+}
+
+void OfflineEvaluator::compute_prod_mask_part2(ReplicatedShare<Ring>& mask_prod, size_t idx) {
+  for(int i = 0; i<5; i++) {
+    for (int j = i+1; j<5; j++) {
+      if (i == id_ || j == id_) {
+        auto [min, mid, max] = findRemainingNumbers(i, j);
+        if(i == id_) { //如果是参与方l，那么需要用通信协议来更新x_m
+          // Ring x_m;
+          auto alpha_x_y_i_j_mask = jshShare(id_, rgen_, min, mid, max);
+          const Ring *x_m_vec = reinterpret_cast<const Ring*>(jump_.getValues(min, mid, max).data());
+          
+          Ring x_m = x_m_vec[idx];
+          alpha_x_y_i_j_mask[idxFromSenderAndReceiver(id_, j)] = x_m; //j就对应x_m中的m
+          //自己吧最终结果加上
+          mask_prod += alpha_x_y_i_j_mask;
+        }
+        else if(j == id_) { //如果是参与方m，那么只需要得到x_i,x_j,x_k,x_l即可，这些通过随机生成已经获得了
+          auto alpha_x_y_i_j_mask = jshShare(id_, rgen_, min, mid, max);
+          //自己吧最终结果加上
+          mask_prod += alpha_x_y_i_j_mask;
+        }
+      }
+    }
+  }
+}
+
 ReplicatedShare<Ring> OfflineEvaluator::compute_prod_mask_dot(vector<ReplicatedShare<Ring>> mask_in1_vec, vector<ReplicatedShare<Ring>> mask_in2_vec) {
+  ReplicatedShare<Ring> mask_prod;
+  mask_prod.init_zero();
+  
+  //①计算α_xy = α_x * α_y的共享，除了要接受消息，还要发送消息
+  for(int i = 0; i<5; i++) {
+    for (int j = i+1; j<5; j++) {
+      if(i == id_ || j == id_) {
+        //无法生成α_{xyij}，需要接受收消息，这种情况会发送四次
+        // Ring x_m;
+        auto [min, mid, max] = findRemainingNumbers(i, j);
+        jump_.jumpUpdate(min, mid, max, id_, (size_t) sizeof(Ring), nullptr);
+      }
+      else {
+        //发送消息
+        auto [min, mid, max] = sortThreeNumbers(id_, i, j); //这三个人可以计算的值有
+        auto [other1, other2] = findRemainingNumbers(min, mid, max); //一定有other1<ohter2
+        //计算α_{xy,ohter1,other2}
+        Ring alpha_x_y_other1_other2 = 0;
+        for(int t = 0; t<mask_in1_vec.size(); t++) {
+          auto &mask_in1 = mask_in1_vec[t];
+          auto &mask_in2 = mask_in2_vec[t];
+          alpha_x_y_other1_other2 += mask_in1[idxFromSenderAndReceiver(id_, other1)] * mask_in2[idxFromSenderAndReceiver(id_, other2)]+
+                                        mask_in1[idxFromSenderAndReceiver(id_, other2)] * mask_in2[idxFromSenderAndReceiver(id_, other1)];
+          if (min == 0 && mid == 1 && max == 2) {
+            alpha_x_y_other1_other2 += mask_in1[idxFromSenderAndReceiver(id_, 3)] * mask_in2[idxFromSenderAndReceiver(id_, 3)] + 
+                                        mask_in1[idxFromSenderAndReceiver(id_, 4)] * mask_in2[idxFromSenderAndReceiver(id_, 4)];
+          }
+          else if (min == 2 && mid == 3 && max == 4) {
+            alpha_x_y_other1_other2 += mask_in1[idxFromSenderAndReceiver(id_, 0)] * mask_in2[idxFromSenderAndReceiver(id_, 0)] + 
+                                        mask_in1[idxFromSenderAndReceiver(id_, 1)] * mask_in2[idxFromSenderAndReceiver(id_, 1)];
+          }
+          else if (min == 0 && mid == 1 && max == 3) {
+            alpha_x_y_other1_other2 += mask_in1[idxFromSenderAndReceiver(id_, 2)] * mask_in2[idxFromSenderAndReceiver(id_, 2)];
+          }
+        }
+        
+        //然后把数据share出去
+        auto alpha_x_y_other1_other2_mask = jshShare(id_, rgen_, min, mid, max);
+        auto x_m = alpha_x_y_other1_other2 - (min+mid+max+other1);
+        alpha_x_y_other1_other2_mask[idxFromSenderAndReceiver(id_, other2)] = x_m;
+
+        //自己把最终结果加上
+        mask_prod += alpha_x_y_other1_other2_mask;
+        //按顺序排序，这样其他发送者的发送参数是一样的，接收者也用一样的接受参数接受数据
+        jump_.jumpUpdate(min, mid, max, other1, (size_t) sizeof(Ring), &x_m);
+        jump_.jumpUpdate(min, mid, max, other2, (size_t) sizeof(Ring), &x_m);
+      }
+    }
+  }
+  
+  //通信得到数据
+  jump_.communicate(*network_, *tpool_);
+
+  for(int i = 0; i<5; i++) {
+    for (int j = i+1; j<5; j++) {
+      if (i == id_ || j == id_) {
+        auto [min, mid, max] = findRemainingNumbers(i, j);
+        if(i == id_) { //如果是参与方l，那么需要用通信协议来更新x_m
+          // Ring x_m;
+          auto alpha_x_y_i_j_mask = jshShare(id_, rgen_, min, mid, max);
+          const Ring *x_m = reinterpret_cast<const Ring*>(jump_.getValues(min, mid, max).data());
+          alpha_x_y_i_j_mask[idxFromSenderAndReceiver(id_, j)] = *x_m; //j就对应x_m中的m
+          //自己吧最终结果加上
+          mask_prod += alpha_x_y_i_j_mask;
+        }
+        else if(j == id_) { //如果是参与方m，那么只需要得到x_i,x_j,x_k,x_l即可，这些通过随机生成已经获得了
+          auto alpha_x_y_i_j_mask = jshShare(id_, rgen_, min, mid, max);
+          //自己吧最终结果加上
+          mask_prod += alpha_x_y_i_j_mask;
+        }
+      }
+    }
+  }
+  jump_.reset();
+  return mask_prod;
+}
+
+
+ReplicatedShare<Ring> OfflineEvaluator::compute_prod_mask_dot_part1(vector<ReplicatedShare<Ring>> mask_in1_vec, vector<ReplicatedShare<Ring>> mask_in2_vec) {
   ReplicatedShare<Ring> mask_prod;
   mask_prod.init_zero();
   
@@ -488,6 +651,226 @@ PreprocCircuit<Ring> OfflineEvaluator::run(const utils::LevelOrderedCircuit& cir
   // setWireMasks(input_pid_map);
   preproc_ = offline_setwire(circ, input_pid_map, security_param, id_, prg);
   return std::move(preproc_);
+}
+
+PreprocCircuit<Ring> OfflineEvaluator::offline_setwire_mul_relu_trdotp(
+    const utils::LevelOrderedCircuit& circ,
+    const std::unordered_map<utils::wire_t, int>& input_pid_map,
+    size_t security_param, int pid, emp::PRG& prg) {
+  PreprocCircuit<Ring> preproc(circ.num_gates, circ.outputs.size());
+
+  std::vector<DummyShare<Ring>> wires(circ.num_gates);
+  
+  
+  for (const auto& level : circ.gates_by_level) {
+    jump_.reset();
+    vector<ReplicatedShare<Ring>> mask_prod_vec;
+    
+    for (const auto& gate : level) {
+      switch (gate->type) {
+        case utils::GateType::kMul: {
+          //目的有2个，得到α_xy = α_x * α_y。另一个就是随机生成α_z作为乘法结果的alpha部分
+          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+          const auto& mask_in1 = preproc.gates[g->in1]->mask;
+          const auto& mask_in2 = preproc.gates[g->in2]->mask;
+          mask_prod_vec.push_back(compute_prod_mask_part1(mask_in1, mask_in2));
+          break;
+        }
+      }
+    }
+
+    //通信得到数据
+    jump_.communicate(*network_, *tpool_);
+
+    size_t idx = 0;
+    for (const auto& gate : level) {
+      
+      switch (gate->type) {
+        case utils::GateType::kInp: {
+          auto pregate = std::make_unique<PreprocInput<Ring>>();
+          auto pid = input_pid_map.at(gate->out); //input pid
+          pregate->pid = pid;
+          if (pid == id_) {
+            randomShareWithParty(id_, rgen_, pregate->mask,
+                                 pregate->mask_value); //如果是数据的拥有者，他是可以获得α的累计值的，以此计算β
+          } 
+          else {
+            randomShareWithParty(id_, pid, rgen_, pregate->mask);
+          }
+          preproc.gates[gate->out] = std::move(pregate);
+          break;
+        }
+
+        case utils::GateType::kAdd: {
+          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+          const auto& mask_in1 = preproc.gates[g->in1]->mask;
+          const auto& mask_in2 = preproc.gates[g->in2]->mask;
+          preproc.gates[gate->out] =
+              std::make_unique<PreprocGate<Ring>>(mask_in1 + mask_in2);
+          break;
+        }
+
+        case utils::GateType::kSub: {
+          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+          const auto& mask_in1 = preproc.gates[g->in1]->mask;
+          const auto& mask_in2 = preproc.gates[g->in2]->mask;
+          preproc.gates[gate->out] =
+              std::make_unique<PreprocGate<Ring>>(mask_in1 - mask_in2);
+          break;
+        }
+
+        case utils::GateType::kConstAdd: {
+          const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
+          // const auto& mask_in = preproc.gates[g->in]->mask;
+          preproc.gates[gate->out] =
+              std::make_unique<PreprocGate<Ring>>(preproc.gates[g->in]->mask);//mask_in的值不会改变
+          break;
+        }
+
+        case utils::GateType::kConstMul: {
+          const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
+          const auto& mask_in = preproc.gates[g->in]->mask;
+          // wires[g->out] = wires[g->in] * g->cval;
+          preproc.gates[g->out] =
+              std::make_unique<PreprocGate<Ring>>(mask_in*g->cval);
+          break;
+        }
+
+        case utils::GateType::kMul: {
+          compute_prod_mask_part2(mask_prod_vec[idx], idx);
+          preproc.gates[gate->out] = std::make_unique<PreprocMultGate<Ring>>(
+              randomShareWithParty(id_, rgen_), //生成α_z的共享
+              mask_prod_vec[idx]); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
+          idx++;
+          break;
+        }
+
+        case utils::GateType::kDotprod: {
+          const auto* g = static_cast<utils::SIMDGate*>(gate.get());
+
+          vector<ReplicatedShare<Ring>> mask_in1_vec;
+          vector<ReplicatedShare<Ring>> mask_in2_vec;
+          for (size_t i = 0; i < g->in1.size(); i++) {
+            mask_in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
+            mask_in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
+          }
+          ReplicatedShare<Ring> mask_prod_dot = compute_prod_mask_dot(mask_in1_vec, mask_in2_vec);
+
+          preproc.gates[g->out] = std::make_unique<PreprocDotpGate<Ring>>(
+              randomShareWithParty(id_, rgen_), mask_prod_dot);
+          break;
+        }
+
+        case utils::GateType::kTrdotp: {
+          const auto* g = static_cast<utils::SIMDGate*>(gate.get());
+
+          ReplicatedShare<Ring> r;
+          ReplicatedShare<Ring> r_trunted_d;
+          r.init_zero(); 
+          r_trunted_d.init_zero();
+          //首先生成r1,r2,r3的共享，按照表格的内容生成
+          ReplicatedShare<Ring> r_1_mask = randomShareWithParty_for_trun(id_, rgen_, 0);
+          ReplicatedShare<Ring> r_2_mask = randomShareWithParty_for_trun(id_, rgen_, 1);
+          ReplicatedShare<Ring> r_3_mask = randomShareWithParty_for_trun(id_, rgen_, 2);
+        
+          //生成r的每一比特共享
+          auto r_1_xor_r_2_xor_r_3_mask = comute_random_r_every_bit_sharing(id_, r_1_mask, r_2_mask, r_3_mask);
+          //最后计算随机数r的共享和r^d的共享
+
+          for(int i = 0; i<N; i++) {
+            r += r_1_xor_r_2_xor_r_3_mask[i].cosnt_mul((1ULL << i));
+            if(i>=FRACTION) {
+              r_trunted_d += r_1_xor_r_2_xor_r_3_mask[i].cosnt_mul((1ULL << (i-FRACTION)));
+            }
+          }          
+          
+          vector<ReplicatedShare<Ring>> mask_in1_vec;
+          vector<ReplicatedShare<Ring>> mask_in2_vec;
+          for (size_t i = 0; i < g->in1.size(); i++) {
+            mask_in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
+            mask_in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
+          }
+          ReplicatedShare<Ring> mask_prod_dot = compute_prod_mask_dot(mask_in1_vec, mask_in2_vec);
+
+          //生成三个共享，一个是mask，代表[r^d]，即最终的结果r^d的[·]-sharing部分
+          //一个是mask_prod，代表[z]，即计算结果的共享[·]-sharing
+          //最后一个是mask_d，代表随机数[r]的共享[·]-sharing
+          preproc.gates[g->out] = std::make_unique<PreprocTrDotpGate<Ring>>( 
+              r_trunted_d, mask_prod_dot,
+              r);
+          break;
+        }
+
+        case utils::GateType::kRelu: {
+          const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
+          auto mask_output_alpha = randomShareWithParty(id_, rgen_); //随机化输出值的α
+
+          DummyShare<Ring> mask_mu_1; //随机化mu_1
+          mask_mu_1.randomize(prg);
+          auto mask_mu_1_share = mask_mu_1.getRSS(pid);
+          auto mask_in = preproc.gates[cmp_g->in]->mask;
+
+          auto mask_prod = compute_prod_mask(mask_mu_1_share, mask_in); //直接把关键的prod=(Σα1) x (Σα2)的共享计算出来
+
+          DummyShare<Ring> mask_mu_2; //随机化mu_2
+          mask_mu_2.randomize(prg);
+          auto mask_mu_2_share = mask_mu_2.getRSS(pid);
+
+          Ring beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
+          Ring beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
+
+          ReplicatedShare<Ring> prev_mask = mask_output_alpha;
+          mask_output_alpha +=  mask_mu_2_share;  //alpha提前加好，后续不用加了
+          
+          ReplicatedShare<Ring> mask_for_mul = randomShareWithParty(id_, rgen_); //随机化mu_2
+
+          //前面做了一次乘法，得到的结果是(x-y)大于0或者小于0，分别代表1和0，这里再做一次乘法，输入(x-y)，则输出relu的结果
+          auto mask_prod2 = compute_prod_mask(mask_output_alpha, mask_in); //(x-y)和比较结果z的α做乘法
+
+          preproc.gates[gate->out] = std::make_unique<PreprocReluGate<Ring>>(
+              mask_output_alpha, mask_prod, mask_mu_1_share, mask_mu_2_share, 
+              beta_mu_1, beta_mu_2, prev_mask, mask_prod2, mask_for_mul); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
+          break;
+        }
+
+        case utils::GateType::kCmp: {
+          /* The generation of sharing of mu_1 and mu_2 does not require communication, only local computation
+          so it is assumed here that there is a third-party generater, and the impact on performance can be ignored */
+          const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
+          auto mask_output_alpha = randomShareWithParty(id_, rgen_); //随机化输出值的α
+
+          DummyShare<Ring> mask_mu_1; //随机化mu_1
+          mask_mu_1.randomize(prg); //
+          auto mask_mu_1_share = mask_mu_1.getRSS(pid);
+          auto mask_in = preproc.gates[cmp_g->in]->mask;
+
+          auto mask_prod = compute_prod_mask(mask_mu_1_share, mask_in); //直接把关键的prod=(Σα1) x (Σα2)的共享计算出来
+
+          DummyShare<Ring> mask_mu_2; //随机化mu_2
+          mask_mu_2.randomize(prg);
+          auto mask_mu_2_share = mask_mu_2.getRSS(pid);
+
+          Ring beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
+          Ring beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
+
+          ReplicatedShare<Ring> prev_mask = mask_output_alpha;
+          mask_output_alpha +=  mask_mu_2_share;  //alpha提前加好，后续不用加了
+          //除此之外，还有一个重要的操作，如果(x-y)>0，那么最终需要的α已经有了，但是β无法计算，所以我们需要预先计算好最终结果的β，否则计算不了。
+
+          preproc.gates[gate->out] = std::make_unique<PreprocCmpGate<Ring>>(mask_output_alpha, mask_prod,
+              mask_mu_1_share, mask_mu_2_share, beta_mu_1, beta_mu_2, prev_mask); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
+          break;
+        }
+
+        default: {
+          throw std::runtime_error("Invalid gate.");
+          break;
+        }
+      }
+    }
+  
+  }
+  return preproc;
 }
 
 PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(

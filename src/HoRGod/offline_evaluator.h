@@ -71,8 +71,12 @@ class OfflineEvaluator {
   ReplicatedShare<Ring> randomShareWithParty_for_trun(int id, RandGenPool& rgen, int number_random_id);
   //Used for multiplication to compute α_{xy}
   ReplicatedShare<Ring> compute_prod_mask(ReplicatedShare<Ring> mask_in1, ReplicatedShare<Ring> mask_in2);
+  ReplicatedShare<Ring> compute_prod_mask_part1(ReplicatedShare<Ring> mask_in1, ReplicatedShare<Ring> mask_in2);
+  void compute_prod_mask_part2(ReplicatedShare<Ring>& mask_prod, size_t idx);
+  
 
   ReplicatedShare<Ring> compute_prod_mask_dot(vector<ReplicatedShare<Ring>> mask_in1, vector<ReplicatedShare<Ring>> mask_in2);
+  ReplicatedShare<Ring> compute_prod_mask_dot_part1(vector<ReplicatedShare<Ring>> mask_in1_vec, vector<ReplicatedShare<Ring>> mask_in2_vec);
 
   //given sharings of three random number r1, r2, r3, generating the every bit sharing of r = r1 xor r2 xor r3
   vector<ReplicatedShare<Ring>> comute_random_r_every_bit_sharing(int id, ReplicatedShare<Ring> r_1_mask,
@@ -104,6 +108,10 @@ class OfflineEvaluator {
 
   // secure preprocessing
   PreprocCircuit<Ring> offline_setwire(
+      const utils::LevelOrderedCircuit& circ,
+      const std::unordered_map<utils::wire_t, int>& input_pid_map,
+      size_t security_param, int pid, emp::PRG& prg);
+  PreprocCircuit<Ring> offline_setwire_mul_relu_trdotp(
       const utils::LevelOrderedCircuit& circ,
       const std::unordered_map<utils::wire_t, int>& input_pid_map,
       size_t security_param, int pid, emp::PRG& prg);
