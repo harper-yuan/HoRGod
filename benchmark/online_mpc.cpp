@@ -246,7 +246,7 @@ bpo::options_description programOptions() {
     ("output,o", bpo::value<std::string>(), "File to save benchmarks.")
     ("gate-type", bpo::value<std::string>()->default_value("kMul"), "Type of gates.")
     ("repeat,r", bpo::value<size_t>()->default_value(1), "Number of times to run benchmarks.");
-
+ 
   return desc;
 }
 // clang-format on

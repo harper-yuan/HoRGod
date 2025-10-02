@@ -31,9 +31,7 @@ void ImprovedJmp::reset() {
         is_received1_[i][j][k] = false;
         is_received2_[i][j][k] = false;
         is_received3_[i][j][k] = false;
-        
       }
-      
     }
   }
 }

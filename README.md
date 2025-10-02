@@ -54,7 +54,7 @@ cmake -DCMAKE_BUILD_TYPE=Release ..
 ```
 
 ## Compilation
-The project uses [CMake](https://cmake.org/) for building the source code. 
+The project uses [CMake](https://cmake.org/) for building the source code.
 To compile, run the following commands from the root directory of the repository:
 
 ```sh

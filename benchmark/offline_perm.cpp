@@ -118,8 +118,6 @@ void benchmark(const bpo::variables_map& opts) {
 
   std::unordered_map<utils::wire_t, int> input_pid_map;
 
-  initNTL(cp_threads);
-
   for (size_t r = 0; r < repeat; ++r) {
     
     OfflineEvaluator eval(pid, network1, network2, circ, security_param,

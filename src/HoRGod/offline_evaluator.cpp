@@ -490,18 +490,6 @@ PreprocCircuit<Ring> OfflineEvaluator::run(const utils::LevelOrderedCircuit& cir
   return std::move(preproc_);
 }
 
-emp::block OfflineEvaluator::commonCoinKey() {
-  // Generate random sharing of two 64 bit values and reconstruct to get 128
-  // bit key.
-  std::vector<ReplicatedShare<Ring>> key_shares(2);
-  randomShare(rgen_, key_shares[0]);
-  randomShare(rgen_, key_shares[1]);
-  OnlineEvaluator oeval(id_, network_, PreprocCircuit<Ring>(),
-                        utils::LevelOrderedCircuit(), security_param_, tpool_);
-  auto key = oeval.reconstruct(key_shares);
-  return emp::makeBlock(key[0], key[1]);
-}
-
 PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
     const utils::LevelOrderedCircuit& circ,
     const std::unordered_map<utils::wire_t, int>& input_pid_map,

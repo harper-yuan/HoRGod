@@ -39,10 +39,6 @@ class OfflineEvaluator {
   std::array<std::vector<Ring>, 3> ab_terms_;
   std::array<std::vector<Ring>, 6> c_terms_;
 
-  // Used for running common coin protocol. Returns common random PRG key which
-  // is then used to generate randomness for common coin output.
-  emp::block commonCoinKey();
-
  public:
   // `network_1` and `network_2` are required to be distinct.
   // `network_2` is used for OT while `network_1` is used for all other tasks.
