@@ -660,25 +660,37 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
 
   std::vector<DummyShare<Ring>> wires(circ.num_gates);
   
-  
+  vector<ReplicatedShare<Ring>> mask_prod_vec;
+
+  // for truncation
+  vector<ReplicatedShare<Ring>> r_trunted_d_vec;
+  vector<ReplicatedShare<Ring>> r_vec;
+
+  // for relu
+  vector<ReplicatedShare<Ring>> mask_output_alpha_vec;
+  vector<ReplicatedShare<Ring>> mask_mu_1_share_vec;
+  vector<ReplicatedShare<Ring>> mask_mu_2_share_vec;
+  vector<Ring> beta_mu_1_vec;
+  vector<Ring> beta_mu_2_vec;
+  vector<ReplicatedShare<Ring>> prev_mask_vec;
+  vector<ReplicatedShare<Ring>> mask_for_mul_vec;
   for (const auto& level : circ.gates_by_level) {
     jump_.reset();
-    vector<ReplicatedShare<Ring>> mask_prod_vec;
-
-    // for truncation
-    vector<ReplicatedShare<Ring>> r_trunted_d_vec;
-    vector<ReplicatedShare<Ring>> r_vec;
-
-    // for relu
-    vector<ReplicatedShare<Ring>> mask_output_alpha_vec;
-    vector<ReplicatedShare<Ring>> mask_mu_1_share_vec;
-    vector<ReplicatedShare<Ring>> mask_mu_2_share_vec;
-    vector<Ring> beta_mu_1_vec;
-    vector<Ring> beta_mu_2_vec;
-    vector<ReplicatedShare<Ring>> prev_mask_vec;
-    vector<ReplicatedShare<Ring>> mask_for_mul_vec;
     
+    mask_prod_vec.clear();
+    r_trunted_d_vec.clear();
+    r_vec.clear();
+    mask_output_alpha_vec.clear();
+    mask_mu_1_share_vec.clear();
+    mask_mu_2_share_vec.clear();
+    beta_mu_1_vec.clear();
+    beta_mu_2_vec.clear();
+    prev_mask_vec.clear();
+    mask_for_mul_vec.clear();
+    size_t count = 0;
     for (const auto& gate : level) {
+      // std::cout<<"\r"<<gate->type<<": "<<count;
+      // count++;
       switch (gate->type) {
         case utils::GateType::kMul: {
           //目的有2个，得到α_xy = α_x * α_y。另一个就是随机生成α_z作为乘法结果的alpha部分

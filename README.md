@@ -48,7 +48,7 @@ cd /code
 # If you exit the container, you can enter the container using the following command:
 docker start -ai horgod_container1
 docker exec -it horgod_container1 /bin/bash
-cd /code/SemiHoRGod
+cd /code/HoRGod/build
 mkdir build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release .. 
 ```
