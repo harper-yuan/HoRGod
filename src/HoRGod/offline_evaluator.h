@@ -77,6 +77,7 @@ class OfflineEvaluator {
 
   ReplicatedShare<Ring> compute_prod_mask_dot(vector<ReplicatedShare<Ring>> mask_in1, vector<ReplicatedShare<Ring>> mask_in2);
   ReplicatedShare<Ring> compute_prod_mask_dot_part1(vector<ReplicatedShare<Ring>> mask_in1_vec, vector<ReplicatedShare<Ring>> mask_in2_vec);
+  void compute_prod_mask_dot_part2(ReplicatedShare<Ring>& mask_prod, size_t idx);
 
   //given sharings of three random number r1, r2, r3, generating the every bit sharing of r = r1 xor r2 xor r3
   vector<ReplicatedShare<Ring>> comute_random_r_every_bit_sharing(int id, ReplicatedShare<Ring> r_1_mask,
@@ -111,7 +112,7 @@ class OfflineEvaluator {
       const utils::LevelOrderedCircuit& circ,
       const std::unordered_map<utils::wire_t, int>& input_pid_map,
       size_t security_param, int pid, emp::PRG& prg);
-  PreprocCircuit<Ring> offline_setwire_mul_relu_trdotp(
+  PreprocCircuit<Ring> offline_setwire_no_batch(
       const utils::LevelOrderedCircuit& circ,
       const std::unordered_map<utils::wire_t, int>& input_pid_map,
       size_t security_param, int pid, emp::PRG& prg);
