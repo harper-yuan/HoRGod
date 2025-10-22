@@ -574,6 +574,7 @@ vector<ReplicatedShare<Ring>> OfflineEvaluator::comute_random_r_every_bit_sharin
   return r_1_xor_r_2_xor_r_3_mask;
 }
 
+
 void OfflineEvaluator::setWireMasks(
     const std::unordered_map<utils::wire_t, int>& input_pid_map) {
   for (const auto& level : circ_.gates_by_level) {
@@ -651,295 +652,569 @@ PreprocCircuit<Ring> OfflineEvaluator::run(const utils::LevelOrderedCircuit& cir
   return std::move(preproc_);
 }
 
-// PreprocCircuit<Ring> OfflineEvaluator::offline_setwire_mul_relu_trdotp(
-PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
-    const utils::LevelOrderedCircuit& circ,
-    const std::unordered_map<utils::wire_t, int>& input_pid_map,
-    size_t security_param, int pid, emp::PRG& prg) {
-  PreprocCircuit<Ring> preproc(circ.num_gates, circ.outputs.size());
+// PreprocCircuit<Ring> OfflineEvaluator::offline_bit_sharing_for_truncation(
+//     const utils::LevelOrderedCircuit& circ,
+//     const std::unordered_map<utils::wire_t, int>& input_pid_map,
+//     size_t security_param, int pid, emp::PRG& prg) {
 
-  std::vector<DummyShare<Ring>> wires(circ.num_gates);
-  
-  vector<ReplicatedShare<Ring>> mask_prod_vec;
 
-  // for truncation
-  vector<ReplicatedShare<Ring>> r_trunted_d_vec;
-  vector<ReplicatedShare<Ring>> r_vec;
+//   vector<ReplicatedShare<Ring>> r_1_times_r_2_mask_vec;
+//   vector<ReplicatedShare<Ring>> r_1_mask_vec;
+//   vector<ReplicatedShare<Ring>> r_2_mask_vec;
+//   vector<ReplicatedShare<Ring>> r_3_mask_vec;
+//   vector<Ring> r1_vec;
+//   vector<Ring> r2_vec;
+//   vector<Ring> r3_vec;
 
-  // for relu
-  vector<ReplicatedShare<Ring>> mask_output_alpha_vec;
-  vector<ReplicatedShare<Ring>> mask_mu_1_share_vec;
-  vector<ReplicatedShare<Ring>> mask_mu_2_share_vec;
-  vector<Ring> beta_mu_1_vec;
-  vector<Ring> beta_mu_2_vec;
-  vector<ReplicatedShare<Ring>> prev_mask_vec;
-  vector<ReplicatedShare<Ring>> mask_for_mul_vec;
-  for (const auto& level : circ.gates_by_level) {
-    jump_.reset();
+//   vector<ReplicatedShare<Ring>> r_1_xor_r_2_mask;
+//   vector<ReplicatedShare<Ring>> c_times_r_3_mask_vec;
+//   for (const auto& level : circ.gates_by_level) {
+//     jump_.reset();
+//     r_1_times_r_2_mask_vec.clear();
+//     r_2_mask_vec.clear();
+//     r_3_mask_vec.clear();
+//     r1_vec.clear();
+//     r2_vec.clear();
+//     r3_vec.clear();
     
-    mask_prod_vec.clear();
-    r_trunted_d_vec.clear();
-    r_vec.clear();
-    mask_output_alpha_vec.clear();
-    mask_mu_1_share_vec.clear();
-    mask_mu_2_share_vec.clear();
-    beta_mu_1_vec.clear();
-    beta_mu_2_vec.clear();
-    prev_mask_vec.clear();
-    mask_for_mul_vec.clear();
-    size_t count = 0;
-    for (const auto& gate : level) {
-      // std::cout<<"\r"<<gate->type<<": "<<count;
-      // count++;
-      switch (gate->type) {
-        case utils::GateType::kMul: {
-          //目的有2个，得到α_xy = α_x * α_y。另一个就是随机生成α_z作为乘法结果的alpha部分
-          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
-          const auto& mask_in1 = preproc.gates[g->in1]->mask;
-          const auto& mask_in2 = preproc.gates[g->in2]->mask;
-          mask_prod_vec.push_back(compute_prod_mask_part1(mask_in1, mask_in2));
-          break;
-        }
-        case utils::GateType::kRelu: {
-          const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
-          auto mask_output_alpha = randomShareWithParty(id_, rgen_); //随机化输出值的α
-
-          DummyShare<Ring> mask_mu_1; //随机化mu_1
-          mask_mu_1.randomize(prg);
-          auto mask_mu_1_share = mask_mu_1.getRSS(pid);
-          auto mask_in = preproc.gates[cmp_g->in]->mask;
-
-          // auto mask_prod = compute_prod_mask(mask_mu_1_share, mask_in); //直接把关键的prod=(Σα1) x (Σα2)的共享计算出来
-          mask_prod_vec.push_back(compute_prod_mask_part1(mask_mu_1_share, mask_in));
-          
-          DummyShare<Ring> mask_mu_2; //随机化mu_2
-          mask_mu_2.randomize(prg);
-          auto mask_mu_2_share = mask_mu_2.getRSS(pid);
-
-          Ring beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
-          Ring beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
-
-          ReplicatedShare<Ring> prev_mask = mask_output_alpha;
-          mask_output_alpha +=  mask_mu_2_share;  //alpha提前加好，后续不用加了
-          
-          ReplicatedShare<Ring> mask_for_mul = randomShareWithParty(id_, rgen_); //随机化mu_2
-
-          //前面做了一次乘法，得到的结果是(x-y)大于0或者小于0，分别代表1和0，这里再做一次乘法，输入(x-y)，则输出relu的结果
-          // auto mask_prod2 = compute_prod_mask(mask_output_alpha, mask_in); //(x-y)和比较结果z的α做乘法
-          mask_prod_vec.push_back(compute_prod_mask_part1(mask_output_alpha, mask_in));
-
-          mask_output_alpha_vec.push_back(mask_output_alpha);
-          mask_mu_1_share_vec.push_back(mask_mu_1_share);
-          mask_mu_2_share_vec.push_back(mask_mu_2_share);
-          beta_mu_1_vec.push_back(beta_mu_1);
-          beta_mu_2_vec.push_back(beta_mu_2);
-          prev_mask_vec.push_back(prev_mask);
-          mask_for_mul_vec.push_back(mask_for_mul);
-
-          break;
-        }
-
-        case utils::GateType::kDotprod: {
-          const auto* g = static_cast<utils::SIMDGate*>(gate.get());
-
-          vector<ReplicatedShare<Ring>> mask_in1_vec;
-          vector<ReplicatedShare<Ring>> mask_in2_vec;
-          for (size_t i = 0; i < g->in1.size(); i++) {
-            mask_in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
-            mask_in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
-          }
-          mask_prod_vec.push_back(compute_prod_mask_dot_part1(mask_in1_vec, mask_in2_vec));
-          break;
-        }
-
-        case utils::GateType::kTrdotp: {
-          const auto* g = static_cast<utils::SIMDGate*>(gate.get());
-
-          ReplicatedShare<Ring> r;
-          ReplicatedShare<Ring> r_trunted_d;
-          r.init_zero(); 
-          r_trunted_d.init_zero();
-          //首先生成r1,r2,r3的共享，按照表格的内容生成
-          ReplicatedShare<Ring> r_1_mask = randomShareWithParty_for_trun(id_, rgen_, 0);
-          ReplicatedShare<Ring> r_2_mask = randomShareWithParty_for_trun(id_, rgen_, 1);
-          ReplicatedShare<Ring> r_3_mask = randomShareWithParty_for_trun(id_, rgen_, 2);
-        
-          //生成r的每一比特共享
-          auto r_1_xor_r_2_xor_r_3_mask = comute_random_r_every_bit_sharing(id_, r_1_mask, r_2_mask, r_3_mask);
-          //最后计算随机数r的共享和r^d的共享
-
-          for(int i = 0; i<N; i++) {
-            r += r_1_xor_r_2_xor_r_3_mask[i].cosnt_mul((1ULL << i));
-            if(i>=FRACTION) {
-              r_trunted_d += r_1_xor_r_2_xor_r_3_mask[i].cosnt_mul((1ULL << (i-FRACTION)));
-            }
-          }
-          r_trunted_d_vec.push_back(r_trunted_d);
-          r_vec.push_back(r);
-          //计算内积的部分
-          vector<ReplicatedShare<Ring>> mask_in1_vec;
-          vector<ReplicatedShare<Ring>> mask_in2_vec;
-          for (size_t i = 0; i < g->in1.size(); i++) {
-            mask_in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
-            mask_in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
-          }
-          mask_prod_vec.push_back(compute_prod_mask_dot_part1(mask_in1_vec, mask_in2_vec));
-          // mask_prod_vec.push_back(compute_prod_mask_dot(mask_in1_vec, mask_in2_vec));
-          break;
-        }
-      }
-    }
-
-    //通信得到数据
-    jump_.communicate(*network_, *tpool_);
-
-    size_t idx = 0;
-    size_t idx_trdotp = 0;
-    size_t idx_relu = 0;
-    for (const auto& gate : level) {
+//     /* offline for trucation bit conversion */
+    
+//     for (const auto& gate : level) {
       
-      switch (gate->type) {
-        case utils::GateType::kInp: {
-          auto pregate = std::make_unique<PreprocInput<Ring>>();
-          auto pid = input_pid_map.at(gate->out); //input pid
-          pregate->pid = pid;
-          if (pid == id_) {
-            randomShareWithParty(id_, rgen_, pregate->mask,
-                                 pregate->mask_value); //如果是数据的拥有者，他是可以获得α的累计值的，以此计算β
-          } 
-          else {
-            randomShareWithParty(id_, pid, rgen_, pregate->mask);
-          }
-          preproc.gates[gate->out] = std::move(pregate);
-          break;
-        }
+//       size_t idx_for_random = 0;
+//       switch (gate->type) {
+//         case utils::GateType::kTrdotp: {
+//           //首先生成r1,r2,r3的共享，按照表格的内容生成
+//           r_1_mask_vec.push_back(randomShareWithParty_for_trun(id_, rgen_, 0));
+//           r_2_mask_vec.push_back(randomShareWithParty_for_trun(id_, rgen_, 1));
+//           r_3_mask_vec.push_back(randomShareWithParty_for_trun(id_, rgen_, 2));
 
-        case utils::GateType::kAdd: {
-          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
-          const auto& mask_in1 = preproc.gates[g->in1]->mask;
-          const auto& mask_in2 = preproc.gates[g->in2]->mask;
-          preproc.gates[gate->out] =
-              std::make_unique<PreprocGate<Ring>>(mask_in1 + mask_in2);
-          break;
-        }
+//           //然后首先计算c = r1 xor r2，这里需要调用乘法了
+//           vector<ReplicatedShare<Ring>> r_1_xor_r_2_mask;
+//           Ring r1, r2, r3;
+          
+//           if(id_ != 0) {
+//             r1 = r_1_mask_vec[idx_for_random][idxFromSenderAndReceiver(id_, 0)];
+//           }
+//           else {
+//             r1 = 0;
+//           }
+//           r1_vec.push_back(r1);
 
-        case utils::GateType::kSub: {
-          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
-          const auto& mask_in1 = preproc.gates[g->in1]->mask;
-          const auto& mask_in2 = preproc.gates[g->in2]->mask;
-          preproc.gates[gate->out] =
-              std::make_unique<PreprocGate<Ring>>(mask_in1 - mask_in2);
-          break;
-        }
+//           if(id_ != 1) {
+//             r2 = r_2_mask_vec[idx_for_random][idxFromSenderAndReceiver(id_, 1)];
+//           }
+//           else {
+//             r2 = 0;
+//           }
+//           r2_vec.push_back(r2);
+//           if(id_ != 2) {
+//             r3 = r_3_mask_vec[idx_for_random][idxFromSenderAndReceiver(id_, 2)];
+//           }
+//           else {
+//             r3 = 0;
+//           }
+//           r3_vec.push_back(r3);
 
-        case utils::GateType::kConstAdd: {
-          const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
-          // const auto& mask_in = preproc.gates[g->in]->mask;
-          preproc.gates[gate->out] =
-              std::make_unique<PreprocGate<Ring>>(preproc.gates[g->in]->mask);//mask_in的值不会改变
-          break;
-        }
+//           for(int i = 0; i<N; i++) {
+//             ReplicatedShare<Ring> temp;
+//             //计算r1的第i比特共享
+//             ReplicatedShare<Ring> r_1_i_bit_mask;
+//             r_1_i_bit_mask.init_zero();
+//             if(((r1 >> i) & 1ULL) == 1 && id_ != 0) { //计算r1的第i比特的共享，要确保五个人的共享值复原后等于r的第i比特
+//               r_1_i_bit_mask[idxFromSenderAndReceiver(id_, 0)] = 1;
+//             }
+//             //计算r2的第i比特共享
+//             ReplicatedShare<Ring> r_2_i_bit_mask;
+//             r_2_i_bit_mask.init_zero();
+//             if(((r2 >> i) & 1ULL) == 1 && id_ != 1) { //计算r1的第i比特的共享，要确保五个人的共享值复原后等于r的第i比特
+//               r_2_i_bit_mask[idxFromSenderAndReceiver(id_, 1)] = 1;
+//             }
 
-        case utils::GateType::kConstMul: {
-          const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
-          const auto& mask_in = preproc.gates[g->in]->mask;
-          // wires[g->out] = wires[g->in] * g->cval;
-          preproc.gates[g->out] =
-              std::make_unique<PreprocGate<Ring>>(mask_in*g->cval);
-          break;
-        }
+//             //r1 xor r2 = r1 + r2 - 2r1·r2
+//             temp = r_1_i_bit_mask + r_2_i_bit_mask;
+//             // auto r_1_times_r_2_mask = compute_prod_mask(r_1_i_bit_mask, r_2_i_bit_mask);
+//             r_1_times_r_2_mask_vec.push_back(compute_prod_mask_part1(r_1_i_bit_mask, r_2_i_bit_mask));
+//             // temp -= r_1_times_r_2_mask.cosnt_mul(2);
+//             // r_1_xor_r_2_mask.push_back(temp);
+//           }
+//           idx_for_random++;
+//           break;
+//         }
+//       }
+//     }
 
-        case utils::GateType::kMul: {
-          compute_prod_mask_part2(mask_prod_vec[idx], idx);
-          preproc.gates[gate->out] = std::make_unique<PreprocMultGate<Ring>>(
-              randomShareWithParty(id_, rgen_), //生成α_z的共享
-              mask_prod_vec[idx]); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
-          idx++;
-          break;
-        }
+//     //通信得到数据
+//     jump_.communicate(*network_, *tpool_);
 
-        case utils::GateType::kDotprod: {
-          const auto* g = static_cast<utils::SIMDGate*>(gate.get());
-          compute_prod_mask_dot_part2(mask_prod_vec[idx], idx);
+    
+//     for (const auto& gate : level) {
+//       size_t idx = 0;
+//       size_t idx_for_random = 0;
+//       switch (gate->type) {
+//         case utils::GateType::kTrdotp: {
+//           for(int i = 0; i<N; i++) {
+//             ReplicatedShare<Ring> temp;
+//             //计算r1的第i比特共享
+//             ReplicatedShare<Ring> r_1_i_bit_mask;
+//             r_1_i_bit_mask.init_zero();
+//             if(((r1_vec[idx_for_random] >> i) & 1ULL) == 1 && id_ != 0) { //计算r1的第i比特的共享，要确保五个人的共享值复原后等于r的第i比特
+//               r_1_i_bit_mask[idxFromSenderAndReceiver(id_, 0)] = 1;
+//             }
+//             //计算r2的第i比特共享
+//             ReplicatedShare<Ring> r_2_i_bit_mask;
+//             r_2_i_bit_mask.init_zero();
+//             if(((r2_vec[idx_for_random] >> i) & 1ULL) == 1 && id_ != 1) { //计算r1的第i比特的共享，要确保五个人的共享值复原后等于r的第i比特
+//               r_2_i_bit_mask[idxFromSenderAndReceiver(id_, 1)] = 1;
+//             }
 
-          preproc.gates[g->out] = std::make_unique<PreprocDotpGate<Ring>>(
-              randomShareWithParty(id_, rgen_), mask_prod_vec[idx]);
-          idx++;
-          break;
-        }
+//             //r1 xor r2 = r1 + r2 - 2r1·r2
+//             temp = r_1_i_bit_mask + r_2_i_bit_mask;
+//             // auto r_1_times_r_2_mask = compute_prod_mask(r_1_i_bit_mask, r_2_i_bit_mask);
+//             // r_1_times_r_2_mask_vec.push_back(compute_prod_mask_part1(r_1_i_bit_mask, r_2_i_bit_mask));
+//             compute_prod_mask_part2(r_1_times_r_2_mask_vec[idx], idx);
+//             temp -= r_1_times_r_2_mask_vec[idx].cosnt_mul(2);
+//             r_1_xor_r_2_mask.push_back(temp);
+//           }
+//         }
+//       }
+//     }
 
-        case utils::GateType::kTrdotp: {
-          const auto* g = static_cast<utils::SIMDGate*>(gate.get());
-          compute_prod_mask_dot_part2(mask_prod_vec[idx], idx);
-          // std::cout<<"size:"<<mask_prod_vec.size()<<" gate: "<<gate->type<<": "<<idx<<endl;
+//     jump_.reset();
 
-          //生成三个共享，一个是mask，代表[r^d]，即最终的结果r^d的[·]-sharing部分
-          //一个是mask_prod，代表[z]，即计算结果的共享[·]-sharing
-          //最后一个是mask_d，代表随机数[r]的共享[·]-sharing
-          preproc.gates[g->out] = std::make_unique<PreprocTrDotpGate<Ring>>( 
-              r_trunted_d_vec[idx_trdotp], mask_prod_vec[idx], r_vec[idx_trdotp]);
-          idx++;
-          idx_trdotp++;
-          break;
-        }
+    
+//     c_times_r_3_mask_vec.clear();
+//     for (const auto& gate : level) {
+//       size_t idx = 0;
+//       size_t idx_for_random = 0;
+//       switch (gate->type) {
+//         case utils::GateType::kTrdotp: {
+//           //然后计算c xor r3
+//           vector<ReplicatedShare<Ring>> r_1_xor_r_2_xor_r_3_mask;
+//           Ring r3 = r3_vec[idx_for_random];
+          
+//           for(int i = 0; i<N; i++) {
+//             ReplicatedShare<Ring> temp;
+//             //计算r3的第i比特共享
+//             ReplicatedShare<Ring> r_3_i_bit_mask;
+//             r_3_i_bit_mask.init_zero();
+//             if(((r3 >> i) & 1ULL) == 1 && id_ != 2) { //计算r1的第i比特的共享，要确保五个人的共享值复原后等于r的第i比特
+//               r_3_i_bit_mask[idxFromSenderAndReceiver(id_, 2)] = 1;
+//             }
 
-        case utils::GateType::kRelu: {
-          const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
+//             //c xor r2 = c + r2 - 2c·r2
+//             // temp = r_1_xor_r_2_mask[i] + r_3_i_bit_mask;
+//             c_times_r_3_mask_vec.push_back(compute_prod_mask_part1(r_1_xor_r_2_mask[i], r_3_i_bit_mask));
+//             // temp -= c_times_r_3_mask.cosnt_mul(2);
+//             // r_1_xor_r_2_xor_r_3_mask.push_back(temp);
+//           }
 
-          compute_prod_mask_part2(mask_prod_vec[idx], idx);
-          idx++;
-          compute_prod_mask_part2(mask_prod_vec[idx], idx);
-          idx++;
-
-          preproc.gates[gate->out] = std::make_unique<PreprocReluGate<Ring>>(
-              mask_output_alpha_vec[idx_relu], mask_prod_vec[idx-2], mask_mu_1_share_vec[idx_relu], mask_mu_2_share_vec[idx_relu], 
-              beta_mu_1_vec[idx_relu], beta_mu_2_vec[idx_relu], prev_mask_vec[idx_relu], mask_prod_vec[idx-1], mask_for_mul_vec[idx_relu]); 
-              //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
-          idx_relu++;
-          break;
-        }
-
-        case utils::GateType::kCmp: {
-          /* The generation of sharing of mu_1 and mu_2 does not require communication, only local computation
-          so it is assumed here that there is a third-party generater, and the impact on performance can be ignored */
-          const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
-          auto mask_output_alpha = randomShareWithParty(id_, rgen_); //随机化输出值的α
-
-          DummyShare<Ring> mask_mu_1; //随机化mu_1
-          mask_mu_1.randomize(prg); //
-          auto mask_mu_1_share = mask_mu_1.getRSS(pid);
-          auto mask_in = preproc.gates[cmp_g->in]->mask;
-
-          auto mask_prod = compute_prod_mask(mask_mu_1_share, mask_in); //直接把关键的prod=(Σα1) x (Σα2)的共享计算出来
-
-          DummyShare<Ring> mask_mu_2; //随机化mu_2
-          mask_mu_2.randomize(prg);
-          auto mask_mu_2_share = mask_mu_2.getRSS(pid);
-
-          Ring beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
-          Ring beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
-
-          ReplicatedShare<Ring> prev_mask = mask_output_alpha;
-          mask_output_alpha +=  mask_mu_2_share;  //alpha提前加好，后续不用加了
-          //除此之外，还有一个重要的操作，如果(x-y)>0，那么最终需要的α已经有了，但是β无法计算，所以我们需要预先计算好最终结果的β，否则计算不了。
-
-          preproc.gates[gate->out] = std::make_unique<PreprocCmpGate<Ring>>(mask_output_alpha, mask_prod,
-              mask_mu_1_share, mask_mu_2_share, beta_mu_1, beta_mu_2, prev_mask); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
-          break;
-        }
-
-        default: {
-          throw std::runtime_error("Invalid gate.");
-          break;
-        }
-      }
-    }
+//           idx_for_random++;
+//           idx++;
+//         }
+//       }
+//     }  
   
-  }
-  return preproc;
-}
+//     //通信得到数据
+//     jump_.communicate(*network_, *tpool_);
 
-PreprocCircuit<Ring> OfflineEvaluator::offline_setwire_no_batch(
+//     for (const auto& gate : level) {
+//       size_t idx = 0;
+//       size_t idx_for_random = 0;
+//       switch (gate->type) {
+//         case utils::GateType::kTrdotp: {
+
+//         }
+//       }
+//     }
+//   }
+// }
+
+// PreprocCircuit<Ring> OfflineEvaluator::offline_setwire_mul_relu_trdotp(
+// PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
+//     const utils::LevelOrderedCircuit& circ,
+//     const std::unordered_map<utils::wire_t, int>& input_pid_map,
+//     size_t security_param, int pid, emp::PRG& prg) {
+//   PreprocCircuit<Ring> preproc(circ.num_gates, circ.outputs.size());
+
+//   std::vector<DummyShare<Ring>> wires(circ.num_gates);
+  
+//   vector<ReplicatedShare<Ring>> mask_prod_vec;
+
+//   // for truncation
+//   vector<ReplicatedShare<Ring>> r_trunted_d_vec;
+//   vector<ReplicatedShare<Ring>> r_vec;
+
+//   // for relu
+//   vector<ReplicatedShare<Ring>> mask_output_alpha_vec;
+//   vector<ReplicatedShare<Ring>> mask_mu_1_share_vec;
+//   vector<ReplicatedShare<Ring>> mask_mu_2_share_vec;
+//   vector<Ring> beta_mu_1_vec;
+//   vector<Ring> beta_mu_2_vec;
+//   vector<ReplicatedShare<Ring>> prev_mask_vec;
+//   vector<ReplicatedShare<Ring>> mask_for_mul_vec;
+//   for (const auto& level : circ.gates_by_level) {
+    
+//     for (const auto& gate : level) {
+//       // std::cout<<"\r"<<gate->type<<": "<<count;
+//       // count++;
+//       switch (gate->type) {
+//         case utils::GateType::kTrdotp: {
+//           //首先生成r1,r2,r3的共享，按照表格的内容生成
+//           ReplicatedShare<Ring> r_1_mask = randomShareWithParty_for_trun(id_, rgen_, 0);
+//           ReplicatedShare<Ring> r_2_mask = randomShareWithParty_for_trun(id_, rgen_, 1);
+
+//           //然后首先计算c = r1 xor r2，这里需要调用乘法了
+//           vector<ReplicatedShare<Ring>> r_1_xor_r_2_mask;
+//           Ring r1, r2, r3;
+          
+//           if(id_ != 0) {
+//             r1 = r_1_mask[idxFromSenderAndReceiver(id_, 0)];
+//           }
+//           else {
+//             r1 = 0;
+//           }
+
+//           if(id_ != 1) {
+//             r2 = r_2_mask[idxFromSenderAndReceiver(id_, 1)];
+//           }
+//           else {
+//             r2 = 0;
+//           }
+
+//           for(int i = 0; i<N; i++) {
+//             ReplicatedShare<Ring> temp;
+//             //计算r1的第i比特共享
+//             ReplicatedShare<Ring> r_1_i_bit_mask;
+//             r_1_i_bit_mask.init_zero();
+//             if(((r1 >> i) & 1ULL) == 1 && id_ != 0) { //计算r1的第i比特的共享，要确保五个人的共享值复原后等于r的第i比特
+//               r_1_i_bit_mask[idxFromSenderAndReceiver(id_, 0)] = 1;
+//             }
+//             //计算r2的第i比特共享
+//             ReplicatedShare<Ring> r_2_i_bit_mask;
+//             r_2_i_bit_mask.init_zero();
+//             if(((r2 >> i) & 1ULL) == 1 && id_ != 1) { //计算r1的第i比特的共享，要确保五个人的共享值复原后等于r的第i比特
+//               r_2_i_bit_mask[idxFromSenderAndReceiver(id_, 1)] = 1;
+//             }
+
+//             //r1 xor r2 = r1 + r2 - 2r1·r2
+//             temp = r_1_i_bit_mask + r_2_i_bit_mask;
+//             // auto r_1_times_r_2_mask = compute_prod_mask(r_1_i_bit_mask, r_2_i_bit_mask);
+//             r_1_times_r_2_mask_vec.push_back(compute_prod_mask_part1(r_1_i_bit_mask, r_2_i_bit_mask));
+//             // temp -= r_1_times_r_2_mask.cosnt_mul(2);
+//             // r_1_xor_r_2_mask.push_back(temp);
+//             break;
+//           }
+//         }
+//       }
+//     }
+
+//     //通信得到数据
+//     jump_.communicate(*network_, *tpool_);
+
+//     for (const auto& gate : level) {
+//       // std::cout<<"\r"<<gate->type<<": "<<count;
+//       // count++;
+//       switch (gate->type) {
+//         case utils::GateType::kTrdotp: {
+//           Ring r3;
+//           //然后计算c xor r3
+//           vector<ReplicatedShare<Ring>> r_1_xor_r_2_xor_r_3_mask;
+//           if(id_ != 2) {
+//             r3 = r_3_mask[idxFromSenderAndReceiver(id_, 2)];
+//           }
+//           else {
+//             r3 = 0;
+//           }
+          
+//           for(int i = 0; i<N; i++) {
+//             ReplicatedShare<Ring> temp;
+//             //计算r3的第i比特共享
+//             ReplicatedShare<Ring> r_3_i_bit_mask;
+//             r_3_i_bit_mask.init_zero();
+//             if(((r3 >> i) & 1ULL) == 1 && id_ != 2) { //计算r1的第i比特的共享，要确保五个人的共享值复原后等于r的第i比特
+//               r_3_i_bit_mask[idxFromSenderAndReceiver(id_, 2)] = 1;
+//             }
+
+//             //c xor r2 = c + r2 - 2c·r2
+//             temp = r_1_xor_r_2_mask[i] + r_3_i_bit_mask;
+//             // auto c_times_r_3_mask = compute_prod_mask(r_1_xor_r_2_mask[i], r_3_i_bit_mask);
+//             mask_prod_vec.push_back(compute_prod_mask_part1(r_1_xor_r_2_mask[i], r_3_i_bit_mask));
+//             // temp -= c_times_r_3_mask.cosnt_mul(2);
+//             // r_1_xor_r_2_xor_r_3_mask.push_back(temp);
+//           }
+//           }
+//         }
+//       }
+
+//     jump_.reset();
+    
+//     mask_prod_vec.clear();
+//     r_trunted_d_vec.clear();
+//     r_vec.clear();
+//     mask_output_alpha_vec.clear();
+//     mask_mu_1_share_vec.clear();
+//     mask_mu_2_share_vec.clear();
+//     beta_mu_1_vec.clear();
+//     beta_mu_2_vec.clear();
+//     prev_mask_vec.clear();
+//     mask_for_mul_vec.clear();
+//     size_t count = 0;
+//     for (const auto& gate : level) {
+//       // std::cout<<"\r"<<gate->type<<": "<<count;
+//       // count++;
+//       switch (gate->type) {
+//         case utils::GateType::kMul: {
+//           //目的有2个，得到α_xy = α_x * α_y。另一个就是随机生成α_z作为乘法结果的alpha部分
+//           const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+//           const auto& mask_in1 = preproc.gates[g->in1]->mask;
+//           const auto& mask_in2 = preproc.gates[g->in2]->mask;
+//           mask_prod_vec.push_back(compute_prod_mask_part1(mask_in1, mask_in2));
+//           break;
+//         }
+//         case utils::GateType::kRelu: {
+//           const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
+//           auto mask_output_alpha = randomShareWithParty(id_, rgen_); //随机化输出值的α
+
+//           DummyShare<Ring> mask_mu_1; //随机化mu_1
+//           mask_mu_1.randomize(prg);
+//           auto mask_mu_1_share = mask_mu_1.getRSS(pid);
+//           auto mask_in = preproc.gates[cmp_g->in]->mask;
+
+//           // auto mask_prod = compute_prod_mask(mask_mu_1_share, mask_in); //直接把关键的prod=(Σα1) x (Σα2)的共享计算出来
+//           mask_prod_vec.push_back(compute_prod_mask_part1(mask_mu_1_share, mask_in));
+          
+//           DummyShare<Ring> mask_mu_2; //随机化mu_2
+//           mask_mu_2.randomize(prg);
+//           auto mask_mu_2_share = mask_mu_2.getRSS(pid);
+
+//           Ring beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
+//           Ring beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
+
+//           ReplicatedShare<Ring> prev_mask = mask_output_alpha;
+//           mask_output_alpha +=  mask_mu_2_share;  //alpha提前加好，后续不用加了
+          
+//           ReplicatedShare<Ring> mask_for_mul = randomShareWithParty(id_, rgen_); //随机化mu_2
+
+//           //前面做了一次乘法，得到的结果是(x-y)大于0或者小于0，分别代表1和0，这里再做一次乘法，输入(x-y)，则输出relu的结果
+//           // auto mask_prod2 = compute_prod_mask(mask_output_alpha, mask_in); //(x-y)和比较结果z的α做乘法
+//           mask_prod_vec.push_back(compute_prod_mask_part1(mask_output_alpha, mask_in));
+
+//           mask_output_alpha_vec.push_back(mask_output_alpha);
+//           mask_mu_1_share_vec.push_back(mask_mu_1_share);
+//           mask_mu_2_share_vec.push_back(mask_mu_2_share);
+//           beta_mu_1_vec.push_back(beta_mu_1);
+//           beta_mu_2_vec.push_back(beta_mu_2);
+//           prev_mask_vec.push_back(prev_mask);
+//           mask_for_mul_vec.push_back(mask_for_mul);
+
+//           break;
+//         }
+
+//         case utils::GateType::kDotprod: {
+//           const auto* g = static_cast<utils::SIMDGate*>(gate.get());
+
+//           vector<ReplicatedShare<Ring>> mask_in1_vec;
+//           vector<ReplicatedShare<Ring>> mask_in2_vec;
+//           for (size_t i = 0; i < g->in1.size(); i++) {
+//             mask_in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
+//             mask_in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
+//           }
+//           mask_prod_vec.push_back(compute_prod_mask_dot_part1(mask_in1_vec, mask_in2_vec));
+//           break;
+//         }
+
+//         case utils::GateType::kTrdotp: {
+//           const auto* g = static_cast<utils::SIMDGate*>(gate.get());
+
+//           ReplicatedShare<Ring> r;
+//           ReplicatedShare<Ring> r_trunted_d;
+//           r.init_zero(); 
+//           r_trunted_d.init_zero();
+//           //首先生成r1,r2,r3的共享，按照表格的内容生成
+//           // ReplicatedShare<Ring> r_1_mask = randomShareWithParty_for_trun(id_, rgen_, 0);
+//           // ReplicatedShare<Ring> r_2_mask = randomShareWithParty_for_trun(id_, rgen_, 1);
+//           ReplicatedShare<Ring> r_3_mask = randomShareWithParty_for_trun(id_, rgen_, 2);
+        
+//           //生成r的每一比特共享
+//           // auto r_1_xor_r_2_xor_r_3_mask = comute_random_r_every_bit_sharing(id_, r_1_mask, r_2_mask, r_3_mask);
+          
+
+          
+//           //最后计算随机数r的共享和r^d的共享
+
+//           for(int i = 0; i<N; i++) {
+//             r += r_1_xor_r_2_xor_r_3_mask[i].cosnt_mul((1ULL << i));
+//             if(i>=FRACTION) {
+//               r_trunted_d += r_1_xor_r_2_xor_r_3_mask[i].cosnt_mul((1ULL << (i-FRACTION)));
+//             }
+//           }
+//           r_trunted_d_vec.push_back(r_trunted_d);
+//           r_vec.push_back(r);
+//           //计算内积的部分
+//           vector<ReplicatedShare<Ring>> mask_in1_vec;
+//           vector<ReplicatedShare<Ring>> mask_in2_vec;
+//           for (size_t i = 0; i < g->in1.size(); i++) {
+//             mask_in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
+//             mask_in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
+//           }
+//           mask_prod_vec.push_back(compute_prod_mask_dot_part1(mask_in1_vec, mask_in2_vec));
+//           // mask_prod_vec.push_back(compute_prod_mask_dot(mask_in1_vec, mask_in2_vec));
+//           break;
+//         }
+//       }
+//     }
+
+//     //通信得到数据
+//     jump_.communicate(*network_, *tpool_);
+
+//     size_t idx = 0;
+//     size_t idx_trdotp = 0;
+//     size_t idx_relu = 0;
+//     for (const auto& gate : level) {
+      
+//       switch (gate->type) {
+//         case utils::GateType::kInp: {
+//           auto pregate = std::make_unique<PreprocInput<Ring>>();
+//           auto pid = input_pid_map.at(gate->out); //input pid
+//           pregate->pid = pid;
+//           if (pid == id_) {
+//             randomShareWithParty(id_, rgen_, pregate->mask,
+//                                  pregate->mask_value); //如果是数据的拥有者，他是可以获得α的累计值的，以此计算β
+//           } 
+//           else {
+//             randomShareWithParty(id_, pid, rgen_, pregate->mask);
+//           }
+//           preproc.gates[gate->out] = std::move(pregate);
+//           break;
+//         }
+
+//         case utils::GateType::kAdd: {
+//           const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+//           const auto& mask_in1 = preproc.gates[g->in1]->mask;
+//           const auto& mask_in2 = preproc.gates[g->in2]->mask;
+//           preproc.gates[gate->out] =
+//               std::make_unique<PreprocGate<Ring>>(mask_in1 + mask_in2);
+//           break;
+//         }
+
+//         case utils::GateType::kSub: {
+//           const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+//           const auto& mask_in1 = preproc.gates[g->in1]->mask;
+//           const auto& mask_in2 = preproc.gates[g->in2]->mask;
+//           preproc.gates[gate->out] =
+//               std::make_unique<PreprocGate<Ring>>(mask_in1 - mask_in2);
+//           break;
+//         }
+
+//         case utils::GateType::kConstAdd: {
+//           const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
+//           // const auto& mask_in = preproc.gates[g->in]->mask;
+//           preproc.gates[gate->out] =
+//               std::make_unique<PreprocGate<Ring>>(preproc.gates[g->in]->mask);//mask_in的值不会改变
+//           break;
+//         }
+
+//         case utils::GateType::kConstMul: {
+//           const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
+//           const auto& mask_in = preproc.gates[g->in]->mask;
+//           // wires[g->out] = wires[g->in] * g->cval;
+//           preproc.gates[g->out] =
+//               std::make_unique<PreprocGate<Ring>>(mask_in*g->cval);
+//           break;
+//         }
+
+//         case utils::GateType::kMul: {
+//           compute_prod_mask_part2(mask_prod_vec[idx], idx);
+//           preproc.gates[gate->out] = std::make_unique<PreprocMultGate<Ring>>(
+//               randomShareWithParty(id_, rgen_), //生成α_z的共享
+//               mask_prod_vec[idx]); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
+//           idx++;
+//           break;
+//         }
+
+//         case utils::GateType::kDotprod: {
+//           const auto* g = static_cast<utils::SIMDGate*>(gate.get());
+//           compute_prod_mask_dot_part2(mask_prod_vec[idx], idx);
+
+//           preproc.gates[g->out] = std::make_unique<PreprocDotpGate<Ring>>(
+//               randomShareWithParty(id_, rgen_), mask_prod_vec[idx]);
+//           idx++;
+//           break;
+//         }
+
+//         case utils::GateType::kTrdotp: {
+//           const auto* g = static_cast<utils::SIMDGate*>(gate.get());
+//           compute_prod_mask_dot_part2(mask_prod_vec[idx], idx);
+//           // std::cout<<"size:"<<mask_prod_vec.size()<<" gate: "<<gate->type<<": "<<idx<<endl;
+
+//           //生成三个共享，一个是mask，代表[r^d]，即最终的结果r^d的[·]-sharing部分
+//           //一个是mask_prod，代表[z]，即计算结果的共享[·]-sharing
+//           //最后一个是mask_d，代表随机数[r]的共享[·]-sharing
+//           preproc.gates[g->out] = std::make_unique<PreprocTrDotpGate<Ring>>( 
+//               r_trunted_d_vec[idx_trdotp], mask_prod_vec[idx], r_vec[idx_trdotp]);
+//           idx++;
+//           idx_trdotp++;
+//           break;
+//         }
+
+//         case utils::GateType::kRelu: {
+//           const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
+
+//           compute_prod_mask_part2(mask_prod_vec[idx], idx);
+//           idx++;
+//           compute_prod_mask_part2(mask_prod_vec[idx], idx);
+//           idx++;
+
+//           preproc.gates[gate->out] = std::make_unique<PreprocReluGate<Ring>>(
+//               mask_output_alpha_vec[idx_relu], mask_prod_vec[idx-2], mask_mu_1_share_vec[idx_relu], mask_mu_2_share_vec[idx_relu], 
+//               beta_mu_1_vec[idx_relu], beta_mu_2_vec[idx_relu], prev_mask_vec[idx_relu], mask_prod_vec[idx-1], mask_for_mul_vec[idx_relu]); 
+//               //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
+//           idx_relu++;
+//           break;
+//         }
+
+//         case utils::GateType::kCmp: {
+//           /* The generation of sharing of mu_1 and mu_2 does not require communication, only local computation
+//           so it is assumed here that there is a third-party generater, and the impact on performance can be ignored */
+//           const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
+//           auto mask_output_alpha = randomShareWithParty(id_, rgen_); //随机化输出值的α
+
+//           DummyShare<Ring> mask_mu_1; //随机化mu_1
+//           mask_mu_1.randomize(prg); //
+//           auto mask_mu_1_share = mask_mu_1.getRSS(pid);
+//           auto mask_in = preproc.gates[cmp_g->in]->mask;
+
+//           auto mask_prod = compute_prod_mask(mask_mu_1_share, mask_in); //直接把关键的prod=(Σα1) x (Σα2)的共享计算出来
+
+//           DummyShare<Ring> mask_mu_2; //随机化mu_2
+//           mask_mu_2.randomize(prg);
+//           auto mask_mu_2_share = mask_mu_2.getRSS(pid);
+
+//           Ring beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
+//           Ring beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
+
+//           ReplicatedShare<Ring> prev_mask = mask_output_alpha;
+//           mask_output_alpha +=  mask_mu_2_share;  //alpha提前加好，后续不用加了
+//           //除此之外，还有一个重要的操作，如果(x-y)>0，那么最终需要的α已经有了，但是β无法计算，所以我们需要预先计算好最终结果的β，否则计算不了。
+
+//           preproc.gates[gate->out] = std::make_unique<PreprocCmpGate<Ring>>(mask_output_alpha, mask_prod,
+//               mask_mu_1_share, mask_mu_2_share, beta_mu_1, beta_mu_2, prev_mask); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
+//           break;
+//         }
+
+//         default: {
+//           throw std::runtime_error("Invalid gate.");
+//           break;
+//         }
+//       }
+//     }
+  
+//   }
+//   return preproc;
+// }
+
+PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
     const utils::LevelOrderedCircuit& circ,
     const std::unordered_map<utils::wire_t, int>& input_pid_map,
     size_t security_param, int pid, emp::PRG& prg) {

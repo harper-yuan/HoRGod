@@ -297,37 +297,6 @@ std::array<std::vector<Ring>, 4> OnlineEvaluator::msbEvaluate(
   return outputs;
 }
 
-// std::vector<Ring> OnlineEvaluator::reconstruct(
-//     const std::array<std::vector<Ring>, 4>& recon_shares) {
-//   // All vectors in recon_shares should have same size.
-//   size_t num = recon_shares[0].size();
-//   size_t nbytes = sizeof(Ring) * num;
-//   // std::cout<<"nbytes: "<<nbytes<<endl;
-//   if (nbytes == 0) {
-//     return {};
-//   }
-
-//   std::vector<Ring> vres(num);
-//   jump_.jumpUpdate(id_, pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, -1), nbytes, 
-//                   recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -1))].data());
-//   jump_.jumpUpdate(pidFromOffset(id_, -1), id_, pidFromOffset(id_, 1), pidFromOffset(id_, -2), nbytes, 
-//                   recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -2))].data());
-//   jump_.jumpUpdate(pidFromOffset(id_, -2), pidFromOffset(id_, -1), id_, pidFromOffset(id_, -3), nbytes, 
-//                   recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -3))].data());
-//   jump_.jumpUpdate(pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, 3), id_, nbytes, 
-//                   recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -3))].data());
-//   jump_.communicate(*network_, *tpool_);
-
-//   // reinterpret_cast 的作用是 对指针类型进行低级别的重新解释，即将原始指针类型强制转换为另一种不相关的指针类型（这里是 const Ring*），而无需修改底层数据。
-//   const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, 3)).data());       
-//   std::copy(miss_values, miss_values + num, vres.begin());
-//   for (size_t i = 0; i<num; i++) {
-//     vres[i] = vres[i] + recon_shares[0][i] + recon_shares[1][i] + recon_shares[2][i] + recon_shares[3][i];
-//   }
-//   jump_.reset();
-//   return vres;
-// }
-
 std::vector<Ring> OnlineEvaluator::reconstruct(
     const std::array<std::vector<Ring>, 4>& recon_shares) {
   // All vectors in recon_shares should have same size.
@@ -339,122 +308,153 @@ std::vector<Ring> OnlineEvaluator::reconstruct(
   }
 
   std::vector<Ring> vres(num);
-  switch (id_) {
-    case 0: { //3个数据
-      //round 1
-      jump_.jumpUpdate(2, 3, 4, 0, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 0)].data());
-      jump_.communicate(*network_, *tpool_);
-      
-      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(2, 3, 4).data()); 
-      std::copy(miss_values, miss_values + num, vres.begin());
-      for (size_t i = 0; i<num; i++) {
-        vres[i] = vres[i] + recon_shares[0][i] + recon_shares[1][i] + recon_shares[2][i] + recon_shares[3][i];
-      }
-      jump_.reset();
+  jump_.jumpUpdate(id_, pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, -1), nbytes, 
+                  recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -1))].data());
+  jump_.jumpUpdate(pidFromOffset(id_, -1), id_, pidFromOffset(id_, 1), pidFromOffset(id_, -2), nbytes, 
+                  recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -2))].data());
+  jump_.jumpUpdate(pidFromOffset(id_, -2), pidFromOffset(id_, -1), id_, pidFromOffset(id_, -3), nbytes, 
+                  recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -3))].data());
+  jump_.jumpUpdate(pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, 3), id_, nbytes, 
+                  recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -3))].data());
+  jump_.communicate(*network_, *tpool_);
 
-      //round 2
-      jump_.jumpUpdate(0, 1, 3, 2, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 2)].data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 3
-      jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
-      jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-      break;
-    }
-    case 1: { //3个数据
-      //round 1
-      jump_.jumpUpdate(2, 3, 4, 1, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 1)].data());
-      jump_.communicate(*network_, *tpool_);
-      
-      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(2, 3, 4).data()); 
-      std::copy(miss_values, miss_values + num, vres.begin());
-      for (size_t i = 0; i<num; i++) {
-        vres[i] = vres[i] + recon_shares[0][i] + recon_shares[1][i] + recon_shares[2][i] + recon_shares[3][i];
-      }
-      jump_.reset();
-
-      //round 2
-      jump_.jumpUpdate(0, 1, 3, 2, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 2)].data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 3
-      jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
-      jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-      break;
-    }
-    case 2: { //3个数据
-      //round 1
-      jump_.jumpUpdate(2, 3, 4, 0, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 0)].data());
-      jump_.jumpUpdate(2, 3, 4, 1, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 1)].data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-
-      //round 2
-      jump_.jumpUpdate(0, 1, 3, 2, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 2)].data());
-      jump_.communicate(*network_, *tpool_);
-      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 3).data()); 
-      std::copy(miss_values, miss_values + num, vres.begin());
-      for (size_t i = 0; i<num; i++) {
-        vres[i] = vres[i] + recon_shares[0][i] + recon_shares[1][i] + recon_shares[2][i] + recon_shares[3][i];
-      }
-      jump_.reset();
-
-
-      //round 3
-      jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
-      jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-      break;
-    }
-    case 3: { //3个数据
-      //round 1
-      jump_.jumpUpdate(2, 3, 4, 0, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 0)].data());
-      jump_.jumpUpdate(2, 3, 4, 1, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 1)].data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-
-      //round 2
-      jump_.jumpUpdate(0, 1, 3, 2, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 2)].data());
-      jump_.communicate(*network_, *tpool_);
-      
-      jump_.reset();
-
-
-      //round 3
-      jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
-      jump_.communicate(*network_, *tpool_);
-      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 2).data()); 
-      std::copy(miss_values, miss_values + num, vres.begin());
-      jump_.reset();
-      break;
-    }
-    case 4: { //3个数据
-      //round 1
-      jump_.jumpUpdate(2, 3, 4, 0, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 0)].data());
-      jump_.jumpUpdate(2, 3, 4, 1, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 1)].data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 3
-      jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
-      jump_.communicate(*network_, *tpool_);
-      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 2).data()); 
-      std::copy(miss_values, miss_values + num, vres.begin());
-      jump_.reset();
-      break;
-    }
+  // reinterpret_cast 的作用是 对指针类型进行低级别的重新解释，即将原始指针类型强制转换为另一种不相关的指针类型（这里是 const Ring*），而无需修改底层数据。
+  const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, 3)).data());       
+  std::copy(miss_values, miss_values + num, vres.begin());
+  for (size_t i = 0; i<num; i++) {
+    vres[i] = vres[i] + recon_shares[0][i] + recon_shares[1][i] + recon_shares[2][i] + recon_shares[3][i];
   }
+  jump_.reset();
   return vres;
 }
+
+// std::vector<Ring> OnlineEvaluator::reconstruct(
+//     const std::array<std::vector<Ring>, 4>& recon_shares) {
+//   // All vectors in recon_shares should have same size.
+//   size_t num = recon_shares[0].size();
+//   size_t nbytes = sizeof(Ring) * num;
+//   // std::cout<<"nbytes: "<<nbytes<<endl;
+//   if (nbytes == 0) {
+//     return {};
+//   }
+
+//   std::vector<Ring> vres(num);
+//   switch (id_) {
+//     case 0: { //3个数据
+//       //round 1
+//       jump_.jumpUpdate(2, 3, 4, 0, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 0)].data());
+//       jump_.communicate(*network_, *tpool_);
+      
+//       const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(2, 3, 4).data()); 
+//       std::copy(miss_values, miss_values + num, vres.begin());
+//       for (size_t i = 0; i<num; i++) {
+//         vres[i] = vres[i] + recon_shares[0][i] + recon_shares[1][i] + recon_shares[2][i] + recon_shares[3][i];
+//       }
+//       jump_.reset();
+
+//       //round 2
+//       jump_.jumpUpdate(0, 1, 3, 2, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 2)].data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 3
+//       jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
+//       jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+//       break;
+//     }
+//     case 1: { //3个数据
+//       //round 1
+//       jump_.jumpUpdate(2, 3, 4, 1, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 1)].data());
+//       jump_.communicate(*network_, *tpool_);
+      
+//       const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(2, 3, 4).data()); 
+//       std::copy(miss_values, miss_values + num, vres.begin());
+//       for (size_t i = 0; i<num; i++) {
+//         vres[i] = vres[i] + recon_shares[0][i] + recon_shares[1][i] + recon_shares[2][i] + recon_shares[3][i];
+//       }
+//       jump_.reset();
+
+//       //round 2
+//       jump_.jumpUpdate(0, 1, 3, 2, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 2)].data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 3
+//       jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
+//       jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+//       break;
+//     }
+//     case 2: { //3个数据
+//       //round 1
+//       jump_.jumpUpdate(2, 3, 4, 0, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 0)].data());
+//       jump_.jumpUpdate(2, 3, 4, 1, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 1)].data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+
+//       //round 2
+//       jump_.jumpUpdate(0, 1, 3, 2, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 2)].data());
+//       jump_.communicate(*network_, *tpool_);
+//       const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 3).data()); 
+//       std::copy(miss_values, miss_values + num, vres.begin());
+//       for (size_t i = 0; i<num; i++) {
+//         vres[i] = vres[i] + recon_shares[0][i] + recon_shares[1][i] + recon_shares[2][i] + recon_shares[3][i];
+//       }
+//       jump_.reset();
+
+
+//       //round 3
+//       jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
+//       jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+//       break;
+//     }
+//     case 3: { //3个数据
+//       //round 1
+//       jump_.jumpUpdate(2, 3, 4, 0, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 0)].data());
+//       jump_.jumpUpdate(2, 3, 4, 1, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 1)].data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+
+//       //round 2
+//       jump_.jumpUpdate(0, 1, 3, 2, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 2)].data());
+//       jump_.communicate(*network_, *tpool_);
+      
+//       jump_.reset();
+
+
+//       //round 3
+//       jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
+//       jump_.communicate(*network_, *tpool_);
+//       const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 2).data()); 
+//       std::copy(miss_values, miss_values + num, vres.begin());
+//       jump_.reset();
+//       break;
+//     }
+//     case 4: { //3个数据
+//       //round 1
+//       jump_.jumpUpdate(2, 3, 4, 0, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 0)].data());
+//       jump_.jumpUpdate(2, 3, 4, 1, nbytes, recon_shares[idxFromSenderAndReceiver(id_, 1)].data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 3
+//       jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
+//       jump_.communicate(*network_, *tpool_);
+//       const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 2).data()); 
+//       std::copy(miss_values, miss_values + num, vres.begin());
+//       jump_.reset();
+//       break;
+//     }
+//   }
+//   return vres;
+// }
 
 
 void OnlineEvaluator::evaluateGatesAtDepth_parallel(size_t depth, size_t computation_threads) {

@@ -1,6 +1,6 @@
-# SemiHoRGod
+# HoRGod
 
-This directory contains the implementation of the SemiHoRGod protocol. Please refer to the implementation at [quadsquad](https://github.com/cris-iisc/quadsquad) for comparison.
+This directory contains the implementation of the HoRGod protocol. Please refer to the implementation at [quadsquad](https://github.com/cris-iisc/quadsquad) for comparison.
 
  **At the same time, we extend our sincere gratitude to Aditya Hegde et al. for providing the code framework in [quadsquad](https://github.com/cris-iisc/quadsquad), which has greatly facilitated our implementation of the paper's code. We are truly thankful.**
 
@@ -20,7 +20,7 @@ All required dependencies to compile and run the project are available through t
 To build and run the docker image, execute the following commands from the root directory of the repository:
 
 ```sh
-# Build the SemiHoRGod Docker image.
+# Build the HoRGod Docker image.
 #
 # Building the Docker image requires at least 4GB RAM. This needs to be set 
 # explicitly in case of Windows and MacOS.
@@ -68,13 +68,13 @@ make -j
 A short description of the compiled programs is given below.
 All of them provide detailed usage description on using the `--help` option.
 
-- `benchmarks/online_mpc`: Benchmark the performance of the SemiHoRGod online phase by evaluating a circuit with a given depth and number of multiplication gates at each depth.
-- `benchmarks/online_nn`: Benchmark the performance of the SemiHoRGod online phase for neural network inference on the FCN and LeNet models.
-- `benchmarks/online_perm`: Benchmark the performance of the SemiHoRGod online phase for oblivious permutation.
-- `benchmarks/offline_mpc_tp`: Benchmark the performance of the SemiHoRGod offline phase for a circuit with given number of multiplication gates.
-- `benchmarks/offline_mpc_sub`: Benchmark the performance of the subprotocols used in the SemiHoRGod offline phase.
-- `benchmarks/offline_nn`: Benchmark the performance of the SemiHoRGod offline phase for neural network inference on the FCN and LeNet models.
-- `benchmarks/offline_perm`: Benchmark the performance of the SemiHoRGod offline phase for oblivious permutation.
+- `benchmarks/online_mpc`: Benchmark the performance of the HoRGod online phase by evaluating a circuit with a given depth and number of multiplication gates at each depth.
+- `benchmarks/online_nn`: Benchmark the performance of the HoRGod online phase for neural network inference on the FCN and LeNet models.
+- `benchmarks/online_perm`: Benchmark the performance of the HoRGod online phase for oblivious permutation.
+- `benchmarks/offline_mpc_tp`: Benchmark the performance of the HoRGod offline phase for a circuit with given number of multiplication gates.
+- `benchmarks/offline_mpc_sub`: Benchmark the performance of the subprotocols used in the HoRGod offline phase.
+- `benchmarks/offline_nn`: Benchmark the performance of the HoRGod offline phase for neural network inference on the FCN and LeNet models.
+- `benchmarks/offline_perm`: Benchmark the performance of the HoRGod offline phase for oblivious permutation.
 - `tests/*`: These programs contain unit tests for various parts of the codebase. The test coverage is currently incomplete. However, the protocols have been manually verified for correctness.
 
 
@@ -171,9 +171,9 @@ gdb --args ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10  #using gdb wit
 ## All test command for both 5PC and 7PC
 We note that every machine only runs one command
 
-### Multiplication online phase
+### Multiplication
 
-#### Running time and communication
+#### Running time and communication online
 ```sh
 # multiplication online
 
@@ -214,84 +214,253 @@ We note that every machine only runs one command
 ./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 6
 ```
 
-#### Throughput
+#### Throughput online
 ```sh
 # multiplication online
 
 ## depth 1 and 100w multiplication per level
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 0
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 1
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 2
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 3
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 4
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 5
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 6
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 1000000 -d 1 -r 10 -p 0
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 1000000 -d 1 -r 10 -o online_mpc_tp_100w_d1_t1_r10 -p 1
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 1000000 -d 1 -r 10 -o online_mpc_tp_100w_d1_t1_r10 -p 2
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 1000000 -d 1 -r 10 -o online_mpc_tp_100w_d1_t1_r10 -p 3
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 1000000 -d 1 -r 10 -o online_mpc_tp_100w_d1_t1_r10 -p 4
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 1000000 -d 1 -r 10 -o online_mpc_tp_100w_d1_t1_r10 -p 5
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 1000000 -d 1 -r 10 -o online_mpc_tp_100w_d1_t1_r10 -p 6
+
 
 ## depth 20 and 5w multiplication per level
-./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 0
-./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 1
-./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 2
-./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 3
-./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 4
-./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 5
-./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 6
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 50000 -d 20 -r 10 -o online_mpc_tp_5w_d20_t1_r10 -p 0
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 50000 -d 20 -r 10 -o online_mpc_tp_5w_d20_t1_r10 -p 1
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 50000 -d 20 -r 10 -o online_mpc_tp_5w_d20_t1_r10 -p 2
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 50000 -d 20 -r 10 -o online_mpc_tp_5w_d20_t1_r10 -p 3
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 50000 -d 20 -r 10 -o online_mpc_tp_5w_d20_t1_r10 -p 4
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 50000 -d 20 -r 10 -o online_mpc_tp_5w_d20_t1_r10 -p 5
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 50000 -d 20 -r 10 -o online_mpc_tp_5w_d20_t1_r10 -p 6
+
 
 ## depth 100 and 1w multiplication per level
-./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 0
-./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 1
-./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 2
-./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 3
-./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 4
-./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 5
-./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 6
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 10000 -d 100 -r 10 -o online_mpc_tp_1w_d100_t1_r10 -p 0
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 10000 -d 100 -r 10 -o online_mpc_tp_1w_d100_t1_r10 -p 1
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 10000 -d 100 -r 10 -o online_mpc_tp_1w_d100_t1_r10 -p 2
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 10000 -d 100 -r 10 -o online_mpc_tp_1w_d100_t1_r10 -p 3
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 10000 -d 100 -r 10 -o online_mpc_tp_1w_d100_t1_r10 -p 4
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 10000 -d 100 -r 10 -o online_mpc_tp_1w_d100_t1_r10 -p 5
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 10000 -d 100 -r 10 -o online_mpc_tp_1w_d100_t1_r10 -p 6
+
 
 ## depth 1000 and 1k multiplication per level
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 0
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 1
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 2
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 3
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 4
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 5
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 6
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 1000 -d 1000 -r 10 -o online_mpc_tp_1k_d1000_t1_r10 -p 0
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 1000 -d 1000 -r 10 -o online_mpc_tp_1k_d1000_t1_r10 -p 1
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 1000 -d 1000 -r 10 -o online_mpc_tp_1k_d1000_t1_r10 -p 2
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 1000 -d 1000 -r 10 -o online_mpc_tp_1k_d1000_t1_r10 -p 3
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 1000 -d 1000 -r 10 -o online_mpc_tp_1k_d1000_t1_r10 -p 4
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 1000 -d 1000 -r 10 -o online_mpc_tp_1k_d1000_t1_r10 -p 5
+./benchmarks/online_mpc_tp --net-config ../net_config.json -g 1000 -d 1000 -r 10 -o online_mpc_tp_1k_d1000_t1_r10 -p 6
 ```
 
-### Multiplication offline phase
+#### Running time and communication offline
+
 ```sh
 # multiplication offline
 
 ## depth 1 and 100w multiplication per level
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 0
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 1
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 2
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 3
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 4
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 5
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000000 -d 1  -t 1 -r 10 -o online_mpc_100w_d1_t1_r10 -p 6
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 1000000 -d 1  -r 10 -o offline_mpc_sub_100w_d1_t1_r10-p 0
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 1000000 -d 1 -r 10 -o offline_mpc_sub_100w_d1_t1_r10 -p 1
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 1000000 -d 1 -r 10 -o offline_mpc_sub_100w_d1_t1_r10 -p 2
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 1000000 -d 1 -r 10 -o offline_mpc_sub_100w_d1_t1_r10 -p 3
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 1000000 -d 1 -r 10 -o offline_mpc_sub_100w_d1_t1_r10 -p 4
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 1000000 -d 1 -r 10 -o offline_mpc_sub_100w_d1_t1_r10 -p 5
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 1000000 -d 1 -r 10 -o offline_mpc_sub_100w_d1_t1_r10 -p 6
 
 ## depth 20 and 5w multiplication per level
-./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 0
-./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 1
-./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 2
-./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 3
-./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 4
-./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 5
-./benchmarks/online_mpc --net-config ../net_config.json -g 50000 -d 20  -t 1 -r 10 -o online_mpc_5w_d20_t1_r10 -p 6
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 50000 -d 20 -r 10 -o offline_mpc_sub_5w_d20_t1_r10 -p 0
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 50000 -d 20 -r 10 -o offline_mpc_sub_5w_d20_t1_r10 -p 1
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 50000 -d 20 -r 10 -o offline_mpc_sub_5w_d20_t1_r10 -p 2
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 50000 -d 20 -r 10 -o offline_mpc_sub_5w_d20_t1_r10 -p 3
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 50000 -d 20 -r 10 -o offline_mpc_sub_5w_d20_t1_r10 -p 4
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 50000 -d 20 -r 10 -o offline_mpc_sub_5w_d20_t1_r10 -p 5
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 50000 -d 20 -r 10 -o offline_mpc_sub_5w_d20_t1_r10 -p 6
 
 ## depth 100 and 1w multiplication per level
-./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 0
-./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 1
-./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 2
-./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 3
-./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 4
-./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 5
-./benchmarks/online_mpc --net-config ../net_config.json -g 10000 -d 100  -t 1 -r 10 -o online_mpc_1w_d100_t1_r10 -p 6
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 100 -r 10 -o offline_mpc_sub_1w_d100_t1_r10 -p 0
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 100 -r 10 -o offline_mpc_sub_1w_d100_t1_r10 -p 1
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 100 -r 10 -o offline_mpc_sub_1w_d100_t1_r10 -p 2
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 100 -r 10 -o offline_mpc_sub_1w_d100_t1_r10 -p 3
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 100 -r 10 -o offline_mpc_sub_1w_d100_t1_r10 -p 4
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 100 -r 10 -o offline_mpc_sub_1w_d100_t1_r10 -p 5
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 100 -r 10 -o offline_mpc_sub_1w_d100_t1_r10 -p 6
 
 ## depth 1000 and 1k multiplication per level
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 0
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 1
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 2
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 3
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 4
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 5
-./benchmarks/online_mpc --net-config ../net_config.json -g 1000 -d 1000  -t 1 -r 10 -o online_mpc_1k_d1000_t1_r10 -p 6
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 1000 -d 1000 -r 10 -o offline_mpc_sub_1k_d1000_t1_r10 -p 0
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 1000 -d 1000 -r 10 -o offline_mpc_sub_1k_d1000_t1_r10 -p 1
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 1000 -d 1000 -r 10 -o offline_mpc_sub_1k_d1000_t1_r10 -p 2
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 1000 -d 1000 -r 10 -o offline_mpc_sub_1k_d1000_t1_r10 -p 3
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 1000 -d 1000 -r 10 -o offline_mpc_sub_1k_d1000_t1_r10 -p 4
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 1000 -d 1000 -r 10 -o offline_mpc_sub_1k_d1000_t1_r10 -p 5
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 1000 -d 1000 -r 10 -o offline_mpc_sub_1k_d1000_t1_r10 -p 6
+```
+
+### NN online
+
+#### Running time and communication online
+
+```sh
+## fcn network
+./benchmarks/online_nn --net-config ../net_config.json -o online_fcn2 -n fcn -p 0
+./benchmarks/online_nn --net-config ../net_config.json -o online_fcn -n fcn -p 1
+./benchmarks/online_nn --net-config ../net_config.json -o online_fcn -n fcn -p 2
+./benchmarks/online_nn --net-config ../net_config.json -o online_fcn -n fcn -p 3
+./benchmarks/online_nn --net-config ../net_config.json -o online_fcn -n fcn -p 4
+./benchmarks/online_nn --net-config ../net_config.json -o online_fcn -n fcn -p 5
+./benchmarks/online_nn --net-config ../net_config.json -o online_fcn -n fcn -p 6
+
+## lenet network
+./benchmarks/online_nn --net-config ../net_config.json -o online_lenet -n lenet -p 0
+./benchmarks/online_nn --net-config ../net_config.json -o online_lenet -n lenet -p 1
+./benchmarks/online_nn --net-config ../net_config.json -o online_lenet -n lenet -p 2
+./benchmarks/online_nn --net-config ../net_config.json -o online_lenet -n lenet -p 3
+./benchmarks/online_nn --net-config ../net_config.json -o online_lenet -n lenet -p 4
+./benchmarks/online_nn --net-config ../net_config.json -o online_lenet -n lenet -p 5
+./benchmarks/online_nn --net-config ../net_config.json -o online_lenet -n lenet -p 6
+```
+
+#### Throughput online
+
+```sh
+## fcn network
+./benchmarks/online_nn_tp --net-config ../net_config.json -o online_fcn_tp2 -n fcn -p 0
+./benchmarks/online_nn_tp --net-config ../net_config.json -o online_fcn_tp -n fcn -p 1
+./benchmarks/online_nn_tp --net-config ../net_config.json -o online_fcn_tp -n fcn -p 2
+./benchmarks/online_nn_tp --net-config ../net_config.json -o online_fcn_tp -n fcn -p 3
+./benchmarks/online_nn_tp --net-config ../net_config.json -o online_fcn_tp -n fcn -p 4
+./benchmarks/online_nn_tp --net-config ../net_config.json -o online_fcn_tp -n fcn -p 5
+./benchmarks/online_nn_tp --net-config ../net_config.json -o online_fcn_tp -n fcn -p 6
+
+## lenet network
+./benchmarks/online_nn_tp --net-config ../net_config.json -o online_lenet_tp -n lenet -p 0
+./benchmarks/online_nn_tp --net-config ../net_config.json -o online_lenet_tp -n lenet -p 1
+./benchmarks/online_nn_tp --net-config ../net_config.json -o online_lenet_tp -n lenet -p 2
+./benchmarks/online_nn_tp --net-config ../net_config.json -o online_lenet_tp -n lenet -p 3
+./benchmarks/online_nn_tp --net-config ../net_config.json -o online_lenet_tp -n lenet -p 4
+./benchmarks/online_nn_tp --net-config ../net_config.json -o online_lenet_tp -n lenet -p 5
+./benchmarks/online_nn_tp --net-config ../net_config.json -o online_lenet_tp -n lenet -p 6
+```
+
+#### Running time and communication offline
+
+```sh
+## fcn network
+./benchmarks/offline_nn --net-config ../net_config.json -o offline_fcn2 -n fcn -p 0
+./benchmarks/offline_nn --net-config ../net_config.json -o offline_fcn -n fcn -p 1
+./benchmarks/offline_nn --net-config ../net_config.json -o offline_fcn -n fcn -p 2
+./benchmarks/offline_nn --net-config ../net_config.json -o offline_fcn -n fcn -p 3
+./benchmarks/offline_nn --net-config ../net_config.json -o offline_fcn -n fcn -p 4
+./benchmarks/offline_nn --net-config ../net_config.json -o offline_fcn -n fcn -p 5
+./benchmarks/offline_nn --net-config ../net_config.json -o offline_fcn -n fcn -p 6
+
+## lenet network
+./benchmarks/offline_nn --net-config ../net_config.json -o offline_lenet -n lenet -p 0
+./benchmarks/offline_nn --net-config ../net_config.json -o offline_lenet -n lenet -p 1
+./benchmarks/offline_nn --net-config ../net_config.json -o offline_lenet -n lenet -p 2
+./benchmarks/offline_nn --net-config ../net_config.json -o offline_lenet -n lenet -p 3
+./benchmarks/offline_nn --net-config ../net_config.json -o offline_lenet -n lenet -p 4
+./benchmarks/offline_nn --net-config ../net_config.json -o offline_lenet -n lenet -p 5
+./benchmarks/offline_nn --net-config ../net_config.json -o offline_lenet -n lenet -p 6
+```
+
+### Permutation
+
+#### online
+
+```sh
+# 10w
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_1M -g 100000 -p 0
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_1M -g 100000 -p 1
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_1M -g 100000 -p 2
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_1M -g 100000 -p 3
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_1M -g 100000 -p 4
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_1M -g 100000 -p 5
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_1M -g 100000 -p 6
+
+# 50w
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_5M_1 -g 500000 -p 0
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_5M -g 500000 -p 1
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_5M -g 500000 -p 2
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_5M -g 500000 -p 3
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_5M -g 500000 -p 4
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_5M -g 500000 -p 5
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_5M -g 500000 -p 6
+
+# 1M
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_10M -g 10000000 -p 0
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_10M -g 10000000 -p 1
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_10M -g 10000000 -p 2
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_10M -g 10000000 -p 3
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_10M -g 10000000 -p 4
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_10M -g 10000000 -p 5
+./benchmarks/online_perm --net-config ../net_config.json -o online_perm_10M -g 10000000 -p 6
+```
+
+#### offline
+
+```sh
+# 10w
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_10w -g 100000 -p 0
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_10w -g 100000 -p 1
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_10w -g 100000 -p 2
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_10w -g 100000 -p 3
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_10w -g 100000 -p 4
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_10w -g 100000 -p 5
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_10w -g 100000 -p 6
+
+# 50w
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_50w -g 500000 -p 0
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_50w -g 500000 -p 1
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_50w -g 500000 -p 2
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_50w -g 500000 -p 3
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_50w -g 500000 -p 4
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_50w -g 500000 -p 5
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_50w -g 500000 -p 6
+
+# 1M
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_1M -g 1000000 -p 0
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_1M -g 1000000 -p 1
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_1M -g 1000000 -p 2
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_1M -g 1000000 -p 3
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_1M -g 1000000 -p 4
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_1M -g 1000000 -p 5
+./benchmarks/offline_perm --net-config ../net_config.json -o offline_perm_1M -g 1000000 -p 6
+```
+
+### Test for every operation offline
+
+```sh
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1  --gate-type kMul -p 0
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1  -r 2 --gate-type kMul -p 0
+# multiplication
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1  -r 10 -o offline_mul_1w --gate-type kMul -p 0
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1  -r 10 -o offline_mul_1w --gate-type kMul -p 1
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1  -r 10 -o offline_mul_1w --gate-type kMul -p 2
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1  -r 10 -o offline_mul_1w --gate-type kMul -p 3
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1  -r 10 -o offline_mul_1w --gate-type kMul -p 4
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1  -r 10 -o offline_mul_1w --gate-type kMul -p 5
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1  -r 10 -o offline_mul_1w --gate-type kMul -p 6
+
+# Relu
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 100 -d 1 --gate-type kRelu -p 0
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1 -r 10 -o offline_relu_1w --gate-type kRelu -p 1
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1 -r 10 -o offline_relu_1w --gate-type kRelu -p 2
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1 -r 10 -o offline_relu_1w --gate-type kRelu -p 3
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1 -r 10 -o offline_relu_1w --gate-type kRelu -p 4
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1 -r 10 -o offline_relu_1w --gate-type kRelu -p 5
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1 -r 10 -o offline_relu_1w --gate-type kRelu -p 6
+
+# Dotproduct with truncation
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1 -r 10 -o offline_Trdotp_1w --gate-type kTrdotp -p 0
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1 -r 10 -o offline_Trdotp_1w --gate-type kTrdotp -p 1
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1 -r 10 -o offline_Trdotp_1w --gate-type kTrdotp -p 2
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1 -r 10 -o offline_Trdotp_1w --gate-type kTrdotp -p 3
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1 -r 10 -o offline_Trdotp_1w --gate-type kTrdotp -p 4
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1 -r 10 -o offline_Trdotp_1w --gate-type kTrdotp -p 5
+./benchmarks/offline_mpc_sub --net-config ../net_config.json -g 10000 -d 1 -r 10 -o offline_Trdotp_1w --gate-type kTrdotp -p 6
 ```

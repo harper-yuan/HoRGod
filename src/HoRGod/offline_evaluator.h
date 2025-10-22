@@ -83,22 +83,11 @@ class OfflineEvaluator {
   vector<ReplicatedShare<Ring>> comute_random_r_every_bit_sharing(int id, ReplicatedShare<Ring> r_1_mask,
                                                                           ReplicatedShare<Ring> r_2_mask,
                                                                           ReplicatedShare<Ring> r_3_mask);
+  
   // Set masks for each wire. Should be called before running any of the other
   // subprotocols.
   void setWireMasks(
       const std::unordered_map<utils::wire_t, int>& input_pid_map);
-  // Computes S_1 and S_2 summands.
-  void computeABCrossTerms();
-  // Computes S_0 summands by running instances of disMult.
-  void computeCCrossTerms();
-  // Combines all computed summands to create output shares. Should be called
-  // after 'computeABCrossTerms' and 'computeCCrossTerms' terminate.
-  void combineCrossTerms();
-  // Runs distributed ZKP to verify behaviour in 'computeABCrossTerms'. Should
-  // be called after 'computeABCrossTerms' terminates.
-  void distributedZKP();
-  // Compute output commitments. Should be called after 'combineCrossTerms'.
-  void computeOutputCommitments();
 
   PreprocCircuit<Ring> getPreproc();
 
@@ -108,14 +97,18 @@ class OfflineEvaluator {
     size_t security_param, int pid, emp::PRG& prg);
 
   // secure preprocessing
+  // PreprocCircuit<Ring> OfflineEvaluator::offline_bit_sharing_for_truncation(
+  //   const utils::LevelOrderedCircuit& circ,
+  //   const std::unordered_map<utils::wire_t, int>& input_pid_map,
+  //   size_t security_param, int pid, emp::PRG& prg);
   PreprocCircuit<Ring> offline_setwire(
       const utils::LevelOrderedCircuit& circ,
       const std::unordered_map<utils::wire_t, int>& input_pid_map,
       size_t security_param, int pid, emp::PRG& prg);
-  PreprocCircuit<Ring> offline_setwire_no_batch(
-      const utils::LevelOrderedCircuit& circ,
-      const std::unordered_map<utils::wire_t, int>& input_pid_map,
-      size_t security_param, int pid, emp::PRG& prg);
+  // PreprocCircuit<Ring> offline_setwire_no_batch(
+  //     const utils::LevelOrderedCircuit& circ,
+  //     const std::unordered_map<utils::wire_t, int>& input_pid_map,
+  //     size_t security_param, int pid, emp::PRG& prg);
 
   // Insecure preprocessing. All preprocessing data is generated in clear but
   // cast in a form that can be used in the online phase.
