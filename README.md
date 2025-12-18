@@ -350,7 +350,7 @@ We note that every machine only runs one command
 
 ```sh
 ## fcn network
-./benchmarks/offline_nn --net-config ../net_config.json -o offline_fcn2 -n fcn -p 0
+./benchmarks/offline_nn --net-config ../net_config.json -o offline_fcn -n fcn -p 0
 ./benchmarks/offline_nn --net-config ../net_config.json -o offline_fcn -n fcn -p 1
 ./benchmarks/offline_nn --net-config ../net_config.json -o offline_fcn -n fcn -p 2
 ./benchmarks/offline_nn --net-config ../net_config.json -o offline_fcn -n fcn -p 3

@@ -78,6 +78,11 @@
         "ios": "cpp",
         "span": "cpp",
         "span_ext": "cpp",
-        "util": "cpp"
+        "util": "cpp",
+        "compare": "cpp",
+        "concepts": "cpp",
+        "numbers": "cpp",
+        "semaphore": "cpp",
+        "stop_token": "cpp"
     }
 }

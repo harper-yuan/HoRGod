@@ -262,7 +262,7 @@ bpo::options_description programOptions() {
     ("pid,p", bpo::value<size_t>()->required(), "Party ID.")
     ("depth,d", bpo::value<size_t>()->required(), "Multiplicative depth of circuit.")
     ("security-param", bpo::value<size_t>()->default_value(128), "Security parameter in bits.")
-    ("cm-threads", bpo::value<size_t>()->default_value(1), "Number of threads for communication (recommended 6).")
+    ("cm-threads", bpo::value<size_t>()->default_value(10), "Number of threads for communication (recommended 10).")
     ("cp-threads", bpo::value<size_t>()->default_value(1), "Number of threads for computation.")
     ("seed", bpo::value<size_t>()->default_value(200), "Value of the random seed.")
     ("net-config", bpo::value<std::string>(), "Path to JSON file containing network details of all parties.")

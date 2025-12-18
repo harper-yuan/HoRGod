@@ -1,3 +1,4 @@
+nohup: ignoring input
 --- Details ---
 batch_size: 1
 neural_network: "lenet"
@@ -23,16 +24,4 @@ Permutation: 0
 Invalid: 0
 Total: 506914
 Depth: 8
-
---- Repetition 1 ---
-Start evaluating 
-End evaluating 
-time: 971993.086642 ms
-sent: 470059104 bytes
-If save the output: 0
-
-Following is the memory: 
---- Statistics ---
-peak_resident_set_size: 180456
-peak_virtual_memory: 286824
 

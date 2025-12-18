@@ -652,6 +652,674 @@ PreprocCircuit<Ring> OfflineEvaluator::run(const utils::LevelOrderedCircuit& cir
   return std::move(preproc_);
 }
 
+
+// Helper struct for batch multiplication inputs
+struct BatchMultInput {
+  ReplicatedShare<Ring> a;
+  ReplicatedShare<Ring> b;
+};
+
+// Helper struct to store intermediate state for Truncation gates
+struct TrDotPState {
+  size_t gate_idx;
+  size_t dot_prod_batch_idx; // Index in batch1 for the dot product result
+  size_t r1r2_start_batch_idx; // Start index in batch1 for N bits of r1*r2
+  std::vector<ReplicatedShare<Ring>> r1_bits;
+  std::vector<ReplicatedShare<Ring>> r2_bits;
+  std::vector<ReplicatedShare<Ring>> r3_bits;
+};
+
+PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
+    const utils::LevelOrderedCircuit& circ,
+    const std::unordered_map<utils::wire_t, int>& input_pid_map,
+    size_t security_param, int pid, emp::PRG& prg) {
+  
+  PreprocCircuit<Ring> preproc(circ.num_gates, circ.outputs.size());
+  jump_.reset();
+  
+  using utils::wire_t;
+
+  // Intermediate states containers
+  struct ReluState {
+    ReplicatedShare<Ring> mask_output_alpha;
+    ReplicatedShare<Ring> mask_mu_1;
+    ReplicatedShare<Ring> mask_mu_2;
+    Ring beta_mu_1;
+    Ring beta_mu_2;
+    ReplicatedShare<Ring> prev_mask;
+    ReplicatedShare<Ring> mask_for_mul;
+    ReplicatedShare<Ring> mask_prod;  
+    ReplicatedShare<Ring> mask_prod2; 
+  };
+
+  struct CmpState {
+    ReplicatedShare<Ring> mask_output_alpha;
+    ReplicatedShare<Ring> mask_mu_1;
+    ReplicatedShare<Ring> mask_mu_2;
+    Ring beta_mu_1;
+    Ring beta_mu_2;
+    ReplicatedShare<Ring> prev_mask;
+    ReplicatedShare<Ring> mask_prod;
+  };
+
+  struct TrdotpState {
+    ReplicatedShare<Ring> r, r_trunted_d;
+    std::vector<ReplicatedShare<Ring>> r1_bits_masks;
+    std::vector<ReplicatedShare<Ring>> r2_bits_masks;
+    std::vector<ReplicatedShare<Ring>> r3_bits_masks;
+    std::vector<Ring> r1_vec, r2_vec, r3_vec; 
+    
+    std::vector<ReplicatedShare<Ring>> r1_times_r2_masks;
+    std::vector<ReplicatedShare<Ring>> c_times_r3_masks;
+    ReplicatedShare<Ring> main_dot_mask;
+  };
+
+  // --- LOGGING VARS START ---
+  int global_gate_count = 0;
+  int current_level_idx = 0;
+  int total_levels = circ.gates_by_level.size();
+  // --- LOGGING VARS END ---
+
+  // Iterate strictly level by level
+  for (const auto& level : circ.gates_by_level) {
+    current_level_idx++; // Level 计数
+    jump_.reset(); 
+
+    std::unordered_map<wire_t, ReplicatedShare<Ring>> mul_states;
+    std::unordered_map<wire_t, ReplicatedShare<Ring>> dot_states;
+    std::unordered_map<wire_t, ReluState> relu_states;
+    std::unordered_map<wire_t, CmpState> cmp_states;
+    std::unordered_map<wire_t, TrdotpState> trdotp_states;
+    
+    bool has_trdotp = false;
+    int level_gate_idx = 0; // 本层内的门计数
+
+    // =================================================================
+    // Pass 1: Prepare Communication & Init Inputs
+    // =================================================================
+    for (const auto& gate : level) {
+      // --- LOGGING START: Pass 1 ---
+      // 格式: [Level X/Y] [Phase] Gate: 本层第几个/本层总数 (Global: 全局总数) Type: 门类型
+      std::cout << "\r[Level " << current_level_idx << "/" << total_levels << "] [Prep    ] "
+                << "Gate: " << (++level_gate_idx) << "/" << level.size() 
+                << " (Global: " << (++global_gate_count) << ") "
+                << "Type: " << gate->type << "      " << std::flush;
+      // --- LOGGING END ---
+      switch (gate->type) {
+        // 注意：原代码这里的 std::cout 放在 switch 后 case 前是无法执行的，已移除
+        case utils::GateType::kInp: {
+          auto pregate = std::make_unique<PreprocInput<Ring>>();
+          auto input_pid = input_pid_map.at(gate->out);
+          pregate->pid = input_pid;
+          if (pid == input_pid) {
+            randomShareWithParty(id_, rgen_, pregate->mask, pregate->mask_value);
+          } else {
+            randomShareWithParty(id_, input_pid, rgen_, pregate->mask);
+          }
+          preproc.gates[gate->out] = std::move(pregate);
+          break;
+        }
+        
+        case utils::GateType::kMul: {
+          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+          mul_states[gate->out] = compute_prod_mask_part1(preproc.gates[g->in1]->mask, preproc.gates[g->in2]->mask);
+          break;
+        }
+
+        case utils::GateType::kDotprod: {
+          const auto* g = static_cast<utils::SIMDGate*>(gate.get());
+          std::vector<ReplicatedShare<Ring>> in1_vec, in2_vec;
+          for (size_t i = 0; i < g->in1.size(); i++) {
+            in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
+            in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
+          }
+          dot_states[gate->out] = compute_prod_mask_dot_part1(in1_vec, in2_vec);
+          break;
+        }
+        case utils::GateType::kRelu: {
+          const auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+          ReluState state;
+          state.mask_output_alpha = randomShareWithParty(id_, rgen_); 
+          
+          DummyShare<Ring> mask_mu_1; mask_mu_1.randomize(prg);
+          state.mask_mu_1 = mask_mu_1.getRSS(pid);
+          
+          DummyShare<Ring> mask_mu_2; mask_mu_2.randomize(prg);
+          state.mask_mu_2 = mask_mu_2.getRSS(pid);
+          
+          state.beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
+          state.beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
+          
+          state.prev_mask = state.mask_output_alpha;
+          state.mask_output_alpha += state.mask_mu_2; 
+          
+          state.mask_for_mul = randomShareWithParty(id_, rgen_);
+          
+          state.mask_prod = compute_prod_mask_part1(state.mask_mu_1, preproc.gates[g->in]->mask);
+          state.mask_prod2 = compute_prod_mask_part1(state.mask_output_alpha, preproc.gates[g->in]->mask);
+          
+          relu_states[gate->out] = state;
+          break;
+        }
+        case utils::GateType::kCmp: {
+          const auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+          CmpState state;
+          state.mask_output_alpha = randomShareWithParty(id_, rgen_);
+          DummyShare<Ring> mask_mu_1; mask_mu_1.randomize(prg);
+          state.mask_mu_1 = mask_mu_1.getRSS(pid);
+          DummyShare<Ring> mask_mu_2; mask_mu_2.randomize(prg);
+          state.mask_mu_2 = mask_mu_2.getRSS(pid);
+          state.beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
+          state.beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
+          state.prev_mask = state.mask_output_alpha;
+          state.mask_output_alpha += state.mask_mu_2;
+          state.mask_prod = compute_prod_mask_part1(state.mask_mu_1, preproc.gates[g->in]->mask);
+          cmp_states[gate->out] = state;
+          break;
+        }
+        case utils::GateType::kTrdotp: {
+          has_trdotp = true;
+          const auto* g = static_cast<utils::SIMDGate*>(gate.get());
+          TrdotpState state;
+          ReplicatedShare<Ring> r1_share = randomShareWithParty_for_trun(id_, rgen_, 0);
+          ReplicatedShare<Ring> r2_share = randomShareWithParty_for_trun(id_, rgen_, 1);
+          ReplicatedShare<Ring> r3_share = randomShareWithParty_for_trun(id_, rgen_, 2);
+          
+          state.r1_vec.push_back((id_ != 0) ? r1_share[idxFromSenderAndReceiver(id_, 0)] : 0);
+          state.r2_vec.push_back((id_ != 1) ? r2_share[idxFromSenderAndReceiver(id_, 1)] : 0);
+          state.r3_vec.push_back((id_ != 2) ? r3_share[idxFromSenderAndReceiver(id_, 2)] : 0);
+          
+          for(int i = 0; i < N; i++) {
+            ReplicatedShare<Ring> r1_bit, r2_bit, r3_bit;
+            r1_bit.init_zero(); r2_bit.init_zero(); r3_bit.init_zero();
+            
+            if(((state.r1_vec[0] >> i) & 1ULL) && id_ != 0) r1_bit[idxFromSenderAndReceiver(id_, 0)] = 1;
+            if(((state.r2_vec[0] >> i) & 1ULL) && id_ != 1) r2_bit[idxFromSenderAndReceiver(id_, 1)] = 1;
+            if(((state.r3_vec[0] >> i) & 1ULL) && id_ != 2) r3_bit[idxFromSenderAndReceiver(id_, 2)] = 1;
+            
+            state.r1_bits_masks.push_back(r1_bit);
+            state.r2_bits_masks.push_back(r2_bit);
+            state.r3_bits_masks.push_back(r3_bit);
+            
+            state.r1_times_r2_masks.push_back(compute_prod_mask_part1(r1_bit, r2_bit));
+          }
+          std::vector<ReplicatedShare<Ring>> in1_vec, in2_vec;
+          for (size_t i = 0; i < g->in1.size(); i++) {
+            in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
+            in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
+          }
+          state.main_dot_mask = compute_prod_mask_dot_part1(in1_vec, in2_vec);
+          trdotp_states[gate->out] = state;
+          break;
+        }
+        default: break;
+      }
+    }
+
+    // Network Round 1
+    // 如果卡网络，这个log能看出来是卡在 Prepare 之后
+    std::cout <<  std::endl;
+    std::cout << "\r[Level " << current_level_idx << "] Communicating (R1)...          " << std::endl;
+    std::cout << "  - Jump Buffer Size: " << jump_.calculate_total_communication() <<"bytes" <<std::endl; 
+    jump_.communicate(*network_, *tpool_);
+
+    // =================================================================
+    // Pass 2: Finalize Complex Gates (except Trdotp part 2)
+    // =================================================================
+    size_t batch_idx = 0;
+    level_gate_idx = 0; // 重置本层计数
+
+    for (const auto& gate : level) {
+      // --- LOGGING START: Pass 2 ---
+      std::cout << "\r[Level " << current_level_idx << "/" << total_levels << "] [Finalize] "
+                << "Gate: " << (++level_gate_idx) << "/" << level.size() 
+                << " Type: " << gate->type << "      " << std::flush;
+
+      
+      // --- LOGGING END ---
+
+      if (gate->type == utils::GateType::kMul) {
+        auto& mask_prod = mul_states[gate->out];
+        compute_prod_mask_part2(mask_prod, batch_idx++);
+        preproc.gates[gate->out] = std::make_unique<PreprocMultGate<Ring>>(
+            randomShareWithParty(id_, rgen_), mask_prod);
+      }
+      else if (gate->type == utils::GateType::kDotprod) {
+        auto& mask_prod = dot_states[gate->out];
+        compute_prod_mask_dot_part2(mask_prod, batch_idx++);
+        preproc.gates[gate->out] = std::make_unique<PreprocDotpGate<Ring>>(
+            randomShareWithParty(id_, rgen_), mask_prod);
+      }
+      else if (gate->type == utils::GateType::kRelu) {
+        auto& state = relu_states[gate->out];
+        compute_prod_mask_part2(state.mask_prod, batch_idx++);  
+        compute_prod_mask_part2(state.mask_prod2, batch_idx++); 
+        
+        preproc.gates[gate->out] = std::make_unique<PreprocReluGate<Ring>>(
+            state.mask_output_alpha, state.mask_prod, state.mask_mu_1, state.mask_mu_2,
+            state.beta_mu_1, state.beta_mu_2, state.prev_mask, state.mask_prod2, state.mask_for_mul);
+      }
+      else if (gate->type == utils::GateType::kCmp) {
+        auto& state = cmp_states[gate->out];
+        compute_prod_mask_part2(state.mask_prod, batch_idx++);
+        preproc.gates[gate->out] = std::make_unique<PreprocCmpGate<Ring>>(
+            state.mask_output_alpha, state.mask_prod, state.mask_mu_1, state.mask_mu_2,
+            state.beta_mu_1, state.beta_mu_2, state.prev_mask);
+      }
+      else if (gate->type == utils::GateType::kTrdotp) {
+        auto& state = trdotp_states[gate->out];
+        for(int i=0; i<N; i++) {
+          compute_prod_mask_part2(state.r1_times_r2_masks[i], batch_idx++);
+        }
+        compute_prod_mask_dot_part2(state.main_dot_mask, batch_idx++);
+      }
+    }
+
+    std::cout <<  std::endl;
+    // Special handling for Truncation Round 2
+    if (has_trdotp) {
+      jump_.reset();
+      
+      level_gate_idx = 0; // 重置计数
+      for (const auto& gate : level) {
+        if(level_gate_idx > 1) break;
+        if (gate->type == utils::GateType::kTrdotp) {
+          // --- LOGGING START: Trunc Pass 1 ---
+          std::cout << "\r[Level " << current_level_idx << "] [Trunc P1] Gate: " << (++level_gate_idx) << "     " << std::flush;
+          // -----------------------------------
+          auto& state = trdotp_states[gate->out];
+          for(int i=0; i<N; i++) {
+            auto r1_xor_r2 = state.r1_bits_masks[i] + state.r2_bits_masks[i] - state.r1_times_r2_masks[i].cosnt_mul(2);
+            state.c_times_r3_masks.push_back(compute_prod_mask_part1(r1_xor_r2, state.r3_bits_masks[i]));
+          }
+        }
+      }
+      std::cout << std::endl;
+      std::cout << "\r[Level " << current_level_idx << "] Communicating (R2-Trunc)...      " << std::endl;
+      std::cout << "  - Jump Buffer Size: " << jump_.calculate_total_communication() <<"bytes" <<std::endl;
+      jump_.communicate(*network_, *tpool_);
+      
+      batch_idx = 0;
+      level_gate_idx = 0;
+      for (const auto& gate : level) {
+        if(level_gate_idx > 1) break;
+        if (gate->type == utils::GateType::kTrdotp) {
+          // --- LOGGING START: Trunc Pass 2 ---
+          std::cout << "\r[Level " << current_level_idx << "] [Trunc P2] Gate: " << (++level_gate_idx) << "     " << std::flush;
+          // -----------------------------------
+          auto& state = trdotp_states[gate->out];
+          state.r.init_zero();
+          state.r_trunted_d.init_zero();
+          
+          for(int i=0; i<N; i++) {
+            compute_prod_mask_part2(state.c_times_r3_masks[i], batch_idx++);
+            auto r1_xor_r2 = state.r1_bits_masks[i] + state.r2_bits_masks[i] - state.r1_times_r2_masks[i].cosnt_mul(2);
+            auto bit_val = r1_xor_r2 + state.r3_bits_masks[i] - state.c_times_r3_masks[i].cosnt_mul(2);
+
+            state.r += bit_val.cosnt_mul(1ULL << i);
+            if (i >= FRACTION) {
+              state.r_trunted_d += bit_val.cosnt_mul(1ULL << (i - FRACTION));
+            }
+          }
+          preproc.gates[gate->out] = std::make_unique<PreprocTrDotpGate<Ring>>(
+              state.r_trunted_d, state.main_dot_mask, state.r);
+        }
+      }
+      jump_.reset();
+    }
+
+    // =================================================================
+    // Pass 3: Process Local Gates (Add, Sub, etc.)
+    // =================================================================
+    level_gate_idx = 0; // 重置本层计数
+    for (const auto& gate : level) {
+      // --- LOGGING START: Pass 3 ---
+      // Local 门通常处理非常快，如果觉得闪得太快看不清，可以只在特定间隔打印
+      // 这里为了调试完整性，我依然每一步都打印
+      std::cout << "\r[Level " << current_level_idx << "/" << total_levels << "] [Local   ] "
+                << "Gate: " << (++level_gate_idx) << "/" << level.size() 
+                << " Type: " << gate->type << "      " << std::flush;
+      // --- LOGGING END ---
+
+      switch (gate->type) {
+        case utils::GateType::kAdd: {
+          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+          preproc.gates[gate->out] = std::make_unique<PreprocGate<Ring>>(
+              preproc.gates[g->in1]->mask + preproc.gates[g->in2]->mask);
+          break;
+        }
+        case utils::GateType::kSub: {
+          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+          preproc.gates[gate->out] = std::make_unique<PreprocGate<Ring>>(
+              preproc.gates[g->in1]->mask - preproc.gates[g->in2]->mask);
+          break;
+        }
+        case utils::GateType::kConstAdd: {
+          const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
+          preproc.gates[gate->out] = std::make_unique<PreprocGate<Ring>>(preproc.gates[g->in]->mask);
+          break;
+        }
+        case utils::GateType::kConstMul: {
+          const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
+          preproc.gates[gate->out] = std::make_unique<PreprocGate<Ring>>(preproc.gates[g->in]->mask * g->cval);
+          break;
+        }
+        // kInp, kMul, etc. are already handled
+        default: break; 
+      }
+    }
+  }
+  
+  // 完成后换行
+  std::cout << "\nPre-processing Complete." << std::endl;
+  return preproc;
+}
+
+// PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
+//     const utils::LevelOrderedCircuit& circ,
+//     const std::unordered_map<utils::wire_t, int>& input_pid_map,
+//     size_t security_param, int pid, emp::PRG& prg) {
+  
+//   PreprocCircuit<Ring> preproc(circ.num_gates, circ.outputs.size());
+//   jump_.reset();
+  
+//   using utils::wire_t;
+
+//   // Intermediate states containers
+//   struct ReluState {
+//     ReplicatedShare<Ring> mask_output_alpha;
+//     ReplicatedShare<Ring> mask_mu_1;
+//     ReplicatedShare<Ring> mask_mu_2;
+//     Ring beta_mu_1;
+//     Ring beta_mu_2;
+//     ReplicatedShare<Ring> prev_mask;
+//     ReplicatedShare<Ring> mask_for_mul;
+//     ReplicatedShare<Ring> mask_prod;  
+//     ReplicatedShare<Ring> mask_prod2; 
+//   };
+
+//   struct CmpState {
+//     ReplicatedShare<Ring> mask_output_alpha;
+//     ReplicatedShare<Ring> mask_mu_1;
+//     ReplicatedShare<Ring> mask_mu_2;
+//     Ring beta_mu_1;
+//     Ring beta_mu_2;
+//     ReplicatedShare<Ring> prev_mask;
+//     ReplicatedShare<Ring> mask_prod;
+//   };
+
+//   struct TrdotpState {
+//     ReplicatedShare<Ring> r, r_trunted_d;
+//     std::vector<ReplicatedShare<Ring>> r1_bits_masks;
+//     std::vector<ReplicatedShare<Ring>> r2_bits_masks;
+//     std::vector<ReplicatedShare<Ring>> r3_bits_masks;
+//     std::vector<Ring> r1_vec, r2_vec, r3_vec; 
+    
+//     std::vector<ReplicatedShare<Ring>> r1_times_r2_masks;
+//     std::vector<ReplicatedShare<Ring>> c_times_r3_masks;
+//     ReplicatedShare<Ring> main_dot_mask;
+//   };
+//   int count = 0;
+//   // Iterate strictly level by level
+//   for (const auto& level : circ.gates_by_level) {
+//     jump_.reset(); 
+
+//     std::unordered_map<wire_t, ReplicatedShare<Ring>> mul_states;
+//     std::unordered_map<wire_t, ReplicatedShare<Ring>> dot_states;
+//     std::unordered_map<wire_t, ReluState> relu_states;
+//     std::unordered_map<wire_t, CmpState> cmp_states;
+//     std::unordered_map<wire_t, TrdotpState> trdotp_states;
+    
+//     bool has_trdotp = false;
+    
+//     // =================================================================
+//     // Pass 1: Prepare Communication & Init Inputs
+//     // CRITICAL: DO NOT process kAdd/kSub/kConst here if they depend on 
+//     // gates in the current level.
+//     // =================================================================
+//     for (const auto& gate : level) {
+//       switch (gate->type) {
+//         std::cout<<"\r"<<gate->type<<": "<<count;
+//         count++;
+//         case utils::GateType::kInp: {
+//           // Input gates are self-contained, safe to init here
+//           auto pregate = std::make_unique<PreprocInput<Ring>>();
+//           auto input_pid = input_pid_map.at(gate->out);
+//           pregate->pid = input_pid;
+//           if (pid == input_pid) {
+//             randomShareWithParty(id_, rgen_, pregate->mask, pregate->mask_value);
+//           } else {
+//             randomShareWithParty(id_, input_pid, rgen_, pregate->mask);
+//           }
+//           preproc.gates[gate->out] = std::move(pregate);
+//           break;
+//         }
+//         // SKIPPING Local gates (Add, Sub, Const) intentionally.
+//         // They will be processed in Pass 3.
+        
+//         case utils::GateType::kMul: {
+//           const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+//           // Input wires are from previous levels, so they are ready.
+//           mul_states[gate->out] = compute_prod_mask_part1(preproc.gates[g->in1]->mask, preproc.gates[g->in2]->mask);
+//           break;
+//         }
+//         case utils::GateType::kDotprod: {
+//           const auto* g = static_cast<utils::SIMDGate*>(gate.get());
+//           std::vector<ReplicatedShare<Ring>> in1_vec, in2_vec;
+//           for (size_t i = 0; i < g->in1.size(); i++) {
+//             in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
+//             in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
+//           }
+//           dot_states[gate->out] = compute_prod_mask_dot_part1(in1_vec, in2_vec);
+//           break;
+//         }
+//         case utils::GateType::kRelu: {
+//           const auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+//           ReluState state;
+//           state.mask_output_alpha = randomShareWithParty(id_, rgen_); 
+          
+//           DummyShare<Ring> mask_mu_1; mask_mu_1.randomize(prg);
+//           state.mask_mu_1 = mask_mu_1.getRSS(pid);
+          
+//           DummyShare<Ring> mask_mu_2; mask_mu_2.randomize(prg);
+//           state.mask_mu_2 = mask_mu_2.getRSS(pid);
+          
+//           state.beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
+//           state.beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
+          
+//           state.prev_mask = state.mask_output_alpha;
+//           state.mask_output_alpha += state.mask_mu_2; 
+          
+//           state.mask_for_mul = randomShareWithParty(id_, rgen_);
+          
+//           state.mask_prod = compute_prod_mask_part1(state.mask_mu_1, preproc.gates[g->in]->mask);
+//           state.mask_prod2 = compute_prod_mask_part1(state.mask_output_alpha, preproc.gates[g->in]->mask);
+          
+//           relu_states[gate->out] = state;
+//           break;
+//         }
+//         case utils::GateType::kCmp: {
+//           const auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+//           CmpState state;
+//           state.mask_output_alpha = randomShareWithParty(id_, rgen_);
+//           DummyShare<Ring> mask_mu_1; mask_mu_1.randomize(prg);
+//           state.mask_mu_1 = mask_mu_1.getRSS(pid);
+//           DummyShare<Ring> mask_mu_2; mask_mu_2.randomize(prg);
+//           state.mask_mu_2 = mask_mu_2.getRSS(pid);
+//           state.beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
+//           state.beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
+//           state.prev_mask = state.mask_output_alpha;
+//           state.mask_output_alpha += state.mask_mu_2;
+//           state.mask_prod = compute_prod_mask_part1(state.mask_mu_1, preproc.gates[g->in]->mask);
+//           cmp_states[gate->out] = state;
+//           break;
+//         }
+//         case utils::GateType::kTrdotp: {
+//           has_trdotp = true;
+//           const auto* g = static_cast<utils::SIMDGate*>(gate.get());
+//           TrdotpState state;
+//           ReplicatedShare<Ring> r1_share = randomShareWithParty_for_trun(id_, rgen_, 0);
+//           ReplicatedShare<Ring> r2_share = randomShareWithParty_for_trun(id_, rgen_, 1);
+//           ReplicatedShare<Ring> r3_share = randomShareWithParty_for_trun(id_, rgen_, 2);
+          
+//           state.r1_vec.push_back((id_ != 0) ? r1_share[idxFromSenderAndReceiver(id_, 0)] : 0);
+//           state.r2_vec.push_back((id_ != 1) ? r2_share[idxFromSenderAndReceiver(id_, 1)] : 0);
+//           state.r3_vec.push_back((id_ != 2) ? r3_share[idxFromSenderAndReceiver(id_, 2)] : 0);
+          
+//           for(int i = 0; i < N; i++) {
+//             ReplicatedShare<Ring> r1_bit, r2_bit, r3_bit;
+//             r1_bit.init_zero(); r2_bit.init_zero(); r3_bit.init_zero();
+            
+//             if(((state.r1_vec[0] >> i) & 1ULL) && id_ != 0) r1_bit[idxFromSenderAndReceiver(id_, 0)] = 1;
+//             if(((state.r2_vec[0] >> i) & 1ULL) && id_ != 1) r2_bit[idxFromSenderAndReceiver(id_, 1)] = 1;
+//             if(((state.r3_vec[0] >> i) & 1ULL) && id_ != 2) r3_bit[idxFromSenderAndReceiver(id_, 2)] = 1;
+            
+//             state.r1_bits_masks.push_back(r1_bit);
+//             state.r2_bits_masks.push_back(r2_bit);
+//             state.r3_bits_masks.push_back(r3_bit);
+            
+//             state.r1_times_r2_masks.push_back(compute_prod_mask_part1(r1_bit, r2_bit));
+//           }
+//           std::vector<ReplicatedShare<Ring>> in1_vec, in2_vec;
+//           for (size_t i = 0; i < g->in1.size(); i++) {
+//             in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
+//             in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
+//           }
+//           state.main_dot_mask = compute_prod_mask_dot_part1(in1_vec, in2_vec);
+//           trdotp_states[gate->out] = state;
+//           break;
+//         }
+//         default: break;
+//       }
+//     }
+
+//     // Network Round 1
+//     jump_.communicate(*network_, *tpool_);
+
+//     // =================================================================
+//     // Pass 2: Finalize Complex Gates (except Trdotp part 2)
+//     // =================================================================
+//     size_t batch_idx = 0;
+    
+//     for (const auto& gate : level) {
+//       std::cout<<"\r"<<gate->type<<": "<<count;
+//       count++;
+//       if (gate->type == utils::GateType::kMul) {
+//         auto& mask_prod = mul_states[gate->out];
+//         compute_prod_mask_part2(mask_prod, batch_idx++);
+//         preproc.gates[gate->out] = std::make_unique<PreprocMultGate<Ring>>(
+//             randomShareWithParty(id_, rgen_), mask_prod);
+//       }
+//       else if (gate->type == utils::GateType::kDotprod) {
+//         auto& mask_prod = dot_states[gate->out];
+//         compute_prod_mask_dot_part2(mask_prod, batch_idx++);
+//         preproc.gates[gate->out] = std::make_unique<PreprocDotpGate<Ring>>(
+//             randomShareWithParty(id_, rgen_), mask_prod);
+//       }
+//       else if (gate->type == utils::GateType::kRelu) {
+//         auto& state = relu_states[gate->out];
+//         compute_prod_mask_part2(state.mask_prod, batch_idx++);  
+//         compute_prod_mask_part2(state.mask_prod2, batch_idx++); 
+        
+//         preproc.gates[gate->out] = std::make_unique<PreprocReluGate<Ring>>(
+//             state.mask_output_alpha, state.mask_prod, state.mask_mu_1, state.mask_mu_2,
+//             state.beta_mu_1, state.beta_mu_2, state.prev_mask, state.mask_prod2, state.mask_for_mul);
+//       }
+//       else if (gate->type == utils::GateType::kCmp) {
+//         auto& state = cmp_states[gate->out];
+//         compute_prod_mask_part2(state.mask_prod, batch_idx++);
+//         preproc.gates[gate->out] = std::make_unique<PreprocCmpGate<Ring>>(
+//             state.mask_output_alpha, state.mask_prod, state.mask_mu_1, state.mask_mu_2,
+//             state.beta_mu_1, state.beta_mu_2, state.prev_mask);
+//       }
+//       else if (gate->type == utils::GateType::kTrdotp) {
+//         auto& state = trdotp_states[gate->out];
+//         for(int i=0; i<N; i++) {
+//           compute_prod_mask_part2(state.r1_times_r2_masks[i], batch_idx++);
+//         }
+//         compute_prod_mask_dot_part2(state.main_dot_mask, batch_idx++);
+//       }
+//     }
+
+//     // Special handling for Truncation Round 2
+//     if (has_trdotp) {
+//       jump_.reset();
+      
+//       for (const auto& gate : level) {
+//         if (gate->type == utils::GateType::kTrdotp) {
+//           auto& state = trdotp_states[gate->out];
+//           for(int i=0; i<N; i++) {
+//             auto r1_xor_r2 = state.r1_bits_masks[i] + state.r2_bits_masks[i] - state.r1_times_r2_masks[i].cosnt_mul(2);
+//             state.c_times_r3_masks.push_back(compute_prod_mask_part1(r1_xor_r2, state.r3_bits_masks[i]));
+//           }
+//         }
+//       }
+      
+//       jump_.communicate(*network_, *tpool_);
+      
+//       batch_idx = 0;
+//       for (const auto& gate : level) {
+//         if (gate->type == utils::GateType::kTrdotp) {
+//           auto& state = trdotp_states[gate->out];
+//           state.r.init_zero();
+//           state.r_trunted_d.init_zero();
+          
+//           for(int i=0; i<N; i++) {
+//             compute_prod_mask_part2(state.c_times_r3_masks[i], batch_idx++);
+//             auto r1_xor_r2 = state.r1_bits_masks[i] + state.r2_bits_masks[i] - state.r1_times_r2_masks[i].cosnt_mul(2);
+//             auto bit_val = r1_xor_r2 + state.r3_bits_masks[i] - state.c_times_r3_masks[i].cosnt_mul(2);
+            
+//             state.r += bit_val.cosnt_mul(1ULL << i);
+//             if (i >= FRACTION) {
+//               state.r_trunted_d += bit_val.cosnt_mul(1ULL << (i - FRACTION));
+//             }
+//           }
+//           preproc.gates[gate->out] = std::make_unique<PreprocTrDotpGate<Ring>>(
+//               state.r_trunted_d, state.main_dot_mask, state.r);
+//         }
+//       }
+//       jump_.reset();
+//     }
+
+//     // =================================================================
+//     // Pass 3: Process Local Gates (Add, Sub, etc.)
+//     // These depend on inputs or complex gates in the same level,
+//     // so they MUST be processed after everything else.
+//     // =================================================================
+//     for (const auto& gate : level) {
+//       switch (gate->type) {
+//         case utils::GateType::kAdd: {
+//           const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+//           // g->in1 and g->in2 are now guaranteed to be ready
+//           preproc.gates[gate->out] = std::make_unique<PreprocGate<Ring>>(
+//               preproc.gates[g->in1]->mask + preproc.gates[g->in2]->mask);
+//           break;
+//         }
+//         case utils::GateType::kSub: {
+//           const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+//           preproc.gates[gate->out] = std::make_unique<PreprocGate<Ring>>(
+//               preproc.gates[g->in1]->mask - preproc.gates[g->in2]->mask);
+//           break;
+//         }
+//         case utils::GateType::kConstAdd: {
+//           const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
+//           preproc.gates[gate->out] = std::make_unique<PreprocGate<Ring>>(preproc.gates[g->in]->mask);
+//           break;
+//         }
+//         case utils::GateType::kConstMul: {
+//           const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
+//           preproc.gates[gate->out] = std::make_unique<PreprocGate<Ring>>(preproc.gates[g->in]->mask * g->cval);
+//           break;
+//         }
+//         // kInp, kMul, etc. are already handled
+//         default: break; 
+//       }
+//     }
+//   }
+  
+//   return preproc;
+// }
+
 // PreprocCircuit<Ring> OfflineEvaluator::offline_bit_sharing_for_truncation(
 //     const utils::LevelOrderedCircuit& circ,
 //     const std::unordered_map<utils::wire_t, int>& input_pid_map,
@@ -854,7 +1522,6 @@ PreprocCircuit<Ring> OfflineEvaluator::run(const utils::LevelOrderedCircuit& cir
 //   vector<ReplicatedShare<Ring>> prev_mask_vec;
 //   vector<ReplicatedShare<Ring>> mask_for_mul_vec;
 //   for (const auto& level : circ.gates_by_level) {
-    
 //     for (const auto& gate : level) {
 //       // std::cout<<"\r"<<gate->type<<": "<<count;
 //       // count++;
@@ -1209,291 +1876,292 @@ PreprocCircuit<Ring> OfflineEvaluator::run(const utils::LevelOrderedCircuit& cir
 //         }
 //       }
 //     }
-  
+
 //   }
 //   return preproc;
 // }
 
-PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
-    const utils::LevelOrderedCircuit& circ,
-    const std::unordered_map<utils::wire_t, int>& input_pid_map,
-    size_t security_param, int pid, emp::PRG& prg) {
-  PreprocCircuit<Ring> preproc(circ.num_gates, circ.outputs.size());
-  jump_.reset();
-  auto msb_circ =
-      utils::Circuit<BoolRing>::generatePPAMSB().orderGatesByLevel();
-  std::vector<DummyShare<Ring>> wires(circ.num_gates);
-  for (const auto& level : circ.gates_by_level) {
-    for (const auto& gate : level) {
-      switch (gate->type) {
-        case utils::GateType::kInp: {
-          auto pregate = std::make_unique<PreprocInput<Ring>>();
-          auto pid = input_pid_map.at(gate->out); //input pid
-          pregate->pid = pid;
-          if (pid == id_) {
-            randomShareWithParty(id_, rgen_, pregate->mask,
-                                 pregate->mask_value); //如果是数据的拥有者，他是可以获得α的累计值的，以此计算β
-          } 
-          else {
-            randomShareWithParty(id_, pid, rgen_, pregate->mask);
-          }
-          preproc.gates[gate->out] = std::move(pregate);
-          break;
-        }
+// 没有并行的setwire
+// PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
+//     const utils::LevelOrderedCircuit& circ,
+//     const std::unordered_map<utils::wire_t, int>& input_pid_map,
+//     size_t security_param, int pid, emp::PRG& prg) {
+//   PreprocCircuit<Ring> preproc(circ.num_gates, circ.outputs.size());
+//   jump_.reset();
+//   auto msb_circ =
+//       utils::Circuit<BoolRing>::generatePPAMSB().orderGatesByLevel();
+//   std::vector<DummyShare<Ring>> wires(circ.num_gates);
+//   for (const auto& level : circ.gates_by_level) {
+//     for (const auto& gate : level) {
+//       switch (gate->type) {
+//         case utils::GateType::kInp: {
+//           auto pregate = std::make_unique<PreprocInput<Ring>>();
+//           auto pid = input_pid_map.at(gate->out); //input pid
+//           pregate->pid = pid;
+//           if (pid == id_) {
+//             randomShareWithParty(id_, rgen_, pregate->mask,
+//                                  pregate->mask_value); //如果是数据的拥有者，他是可以获得α的累计值的，以此计算β
+//           } 
+//           else {
+//             randomShareWithParty(id_, pid, rgen_, pregate->mask);
+//           }
+//           preproc.gates[gate->out] = std::move(pregate);
+//           break;
+//         }
 
-        case utils::GateType::kAdd: {
-          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
-          const auto& mask_in1 = preproc.gates[g->in1]->mask;
-          const auto& mask_in2 = preproc.gates[g->in2]->mask;
-          preproc.gates[gate->out] =
-              std::make_unique<PreprocGate<Ring>>(mask_in1 + mask_in2);
-          break;
-        }
+//         case utils::GateType::kAdd: {
+//           const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+//           const auto& mask_in1 = preproc.gates[g->in1]->mask;
+//           const auto& mask_in2 = preproc.gates[g->in2]->mask;
+//           preproc.gates[gate->out] =
+//               std::make_unique<PreprocGate<Ring>>(mask_in1 + mask_in2);
+//           break;
+//         }
 
-        case utils::GateType::kSub: {
-          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
-          const auto& mask_in1 = preproc.gates[g->in1]->mask;
-          const auto& mask_in2 = preproc.gates[g->in2]->mask;
-          preproc.gates[gate->out] =
-              std::make_unique<PreprocGate<Ring>>(mask_in1 - mask_in2);
-          break;
-        }
+//         case utils::GateType::kSub: {
+//           const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+//           const auto& mask_in1 = preproc.gates[g->in1]->mask;
+//           const auto& mask_in2 = preproc.gates[g->in2]->mask;
+//           preproc.gates[gate->out] =
+//               std::make_unique<PreprocGate<Ring>>(mask_in1 - mask_in2);
+//           break;
+//         }
 
-        case utils::GateType::kConstAdd: {
-          const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
-          // const auto& mask_in = preproc.gates[g->in]->mask;
-          preproc.gates[gate->out] =
-              std::make_unique<PreprocGate<Ring>>(preproc.gates[g->in]->mask);//mask_in的值不会改变
-          break;
-        }
+//         case utils::GateType::kConstAdd: {
+//           const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
+//           // const auto& mask_in = preproc.gates[g->in]->mask;
+//           preproc.gates[gate->out] =
+//               std::make_unique<PreprocGate<Ring>>(preproc.gates[g->in]->mask);//mask_in的值不会改变
+//           break;
+//         }
 
-        case utils::GateType::kConstMul: {
-          const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
-          const auto& mask_in = preproc.gates[g->in]->mask;
-          // wires[g->out] = wires[g->in] * g->cval;
-          preproc.gates[g->out] =
-              std::make_unique<PreprocGate<Ring>>(mask_in*g->cval);
-          break;
-        }
+//         case utils::GateType::kConstMul: {
+//           const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
+//           const auto& mask_in = preproc.gates[g->in]->mask;
+//           // wires[g->out] = wires[g->in] * g->cval;
+//           preproc.gates[g->out] =
+//               std::make_unique<PreprocGate<Ring>>(mask_in*g->cval);
+//           break;
+//         }
         
-        case utils::GateType::kMul: {
-          //目的有2个，得到α_xy = α_x * α_y。另一个就是随机生成α_z作为乘法结果的alpha部分
-          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
-          const auto& mask_in1 = preproc.gates[g->in1]->mask;
-          const auto& mask_in2 = preproc.gates[g->in2]->mask;
-          ReplicatedShare<Ring> mask_prod = compute_prod_mask(mask_in1, mask_in2);
-          preproc.gates[gate->out] = std::make_unique<PreprocMultGate<Ring>>(
-              randomShareWithParty(id_, rgen_), //生成α_z的共享
-              mask_prod); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
-          break;
-        }
+//         case utils::GateType::kMul: {
+//           //目的有2个，得到α_xy = α_x * α_y。另一个就是随机生成α_z作为乘法结果的alpha部分
+//           const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+//           const auto& mask_in1 = preproc.gates[g->in1]->mask;
+//           const auto& mask_in2 = preproc.gates[g->in2]->mask;
+//           ReplicatedShare<Ring> mask_prod = compute_prod_mask(mask_in1, mask_in2);
+//           preproc.gates[gate->out] = std::make_unique<PreprocMultGate<Ring>>(
+//               randomShareWithParty(id_, rgen_), //生成α_z的共享
+//               mask_prod); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
+//           break;
+//         }
 
-        case utils::GateType::kDotprod: {
-          const auto* g = static_cast<utils::SIMDGate*>(gate.get());
+//         case utils::GateType::kDotprod: {
+//           const auto* g = static_cast<utils::SIMDGate*>(gate.get());
 
-          vector<ReplicatedShare<Ring>> mask_in1_vec;
-          vector<ReplicatedShare<Ring>> mask_in2_vec;
-          for (size_t i = 0; i < g->in1.size(); i++) {
-            mask_in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
-            mask_in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
-          }
-          ReplicatedShare<Ring> mask_prod_dot = compute_prod_mask_dot(mask_in1_vec, mask_in2_vec);
+//           vector<ReplicatedShare<Ring>> mask_in1_vec;
+//           vector<ReplicatedShare<Ring>> mask_in2_vec;
+//           for (size_t i = 0; i < g->in1.size(); i++) {
+//             mask_in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
+//             mask_in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
+//           }
+//           ReplicatedShare<Ring> mask_prod_dot = compute_prod_mask_dot(mask_in1_vec, mask_in2_vec);
 
-          preproc.gates[g->out] = std::make_unique<PreprocDotpGate<Ring>>(
-              randomShareWithParty(id_, rgen_), mask_prod_dot);
-          break;
-        }
+//           preproc.gates[g->out] = std::make_unique<PreprocDotpGate<Ring>>(
+//               randomShareWithParty(id_, rgen_), mask_prod_dot);
+//           break;
+//         }
 
-        case utils::GateType::kTrdotp: {
-          const auto* g = static_cast<utils::SIMDGate*>(gate.get());
+//         case utils::GateType::kTrdotp: {
+//           const auto* g = static_cast<utils::SIMDGate*>(gate.get());
 
-          ReplicatedShare<Ring> r;
-          ReplicatedShare<Ring> r_trunted_d;
-          r.init_zero(); 
-          r_trunted_d.init_zero();
-          //首先生成r1,r2,r3的共享，按照表格的内容生成
-          ReplicatedShare<Ring> r_1_mask = randomShareWithParty_for_trun(id_, rgen_, 0);
-          ReplicatedShare<Ring> r_2_mask = randomShareWithParty_for_trun(id_, rgen_, 1);
-          ReplicatedShare<Ring> r_3_mask = randomShareWithParty_for_trun(id_, rgen_, 2);
+//           ReplicatedShare<Ring> r;
+//           ReplicatedShare<Ring> r_trunted_d;
+//           r.init_zero(); 
+//           r_trunted_d.init_zero();
+//           //首先生成r1,r2,r3的共享，按照表格的内容生成
+//           ReplicatedShare<Ring> r_1_mask = randomShareWithParty_for_trun(id_, rgen_, 0);
+//           ReplicatedShare<Ring> r_2_mask = randomShareWithParty_for_trun(id_, rgen_, 1);
+//           ReplicatedShare<Ring> r_3_mask = randomShareWithParty_for_trun(id_, rgen_, 2);
         
-          //生成r的每一比特共享
-          auto r_1_xor_r_2_xor_r_3_mask = comute_random_r_every_bit_sharing(id_, r_1_mask, r_2_mask, r_3_mask);
-          //最后计算随机数r的共享和r^d的共享
+//           //生成r的每一比特共享
+//           auto r_1_xor_r_2_xor_r_3_mask = comute_random_r_every_bit_sharing(id_, r_1_mask, r_2_mask, r_3_mask);
+//           //最后计算随机数r的共享和r^d的共享
 
-          for(int i = 0; i<N; i++) {
-            r += r_1_xor_r_2_xor_r_3_mask[i].cosnt_mul((1ULL << i));
-            if(i>=FRACTION) {
-              r_trunted_d += r_1_xor_r_2_xor_r_3_mask[i].cosnt_mul((1ULL << (i-FRACTION)));
-            }
-          }          
+//           for(int i = 0; i<N; i++) {
+//             r += r_1_xor_r_2_xor_r_3_mask[i].cosnt_mul((1ULL << i));
+//             if(i>=FRACTION) {
+//               r_trunted_d += r_1_xor_r_2_xor_r_3_mask[i].cosnt_mul((1ULL << (i-FRACTION)));
+//             }
+//           }          
           
-          vector<ReplicatedShare<Ring>> mask_in1_vec;
-          vector<ReplicatedShare<Ring>> mask_in2_vec;
-          for (size_t i = 0; i < g->in1.size(); i++) {
-            mask_in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
-            mask_in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
-          }
-          ReplicatedShare<Ring> mask_prod_dot = compute_prod_mask_dot(mask_in1_vec, mask_in2_vec);
+//           vector<ReplicatedShare<Ring>> mask_in1_vec;
+//           vector<ReplicatedShare<Ring>> mask_in2_vec;
+//           for (size_t i = 0; i < g->in1.size(); i++) {
+//             mask_in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
+//             mask_in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
+//           }
+//           ReplicatedShare<Ring> mask_prod_dot = compute_prod_mask_dot(mask_in1_vec, mask_in2_vec);
 
-          //生成三个共享，一个是mask，代表[r^d]，即最终的结果r^d的[·]-sharing部分
-          //一个是mask_prod，代表[z]，即计算结果的共享[·]-sharing
-          //最后一个是mask_d，代表随机数[r]的共享[·]-sharing
-          preproc.gates[g->out] = std::make_unique<PreprocTrDotpGate<Ring>>( 
-              r_trunted_d, mask_prod_dot,
-              r);
-          break;
-        }
+//           //生成三个共享，一个是mask，代表[r^d]，即最终的结果r^d的[·]-sharing部分
+//           //一个是mask_prod，代表[z]，即计算结果的共享[·]-sharing
+//           //最后一个是mask_d，代表随机数[r]的共享[·]-sharing
+//           preproc.gates[g->out] = std::make_unique<PreprocTrDotpGate<Ring>>( 
+//               r_trunted_d, mask_prod_dot,
+//               r);
+//           break;
+//         }
 
-        //要判断一个数x的正负
-        case utils::GateType::kMsb: {
-          const auto* msb_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
-          //先乘一个-1
-          auto alpha = 
-              -1 * wires[msb_g->in].secret();  // Removed multiplication by -1
-          auto alpha_bits = bitDecompose(alpha);
+//         //要判断一个数x的正负
+//         case utils::GateType::kMsb: {
+//           const auto* msb_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
+//           //先乘一个-1
+//           auto alpha = 
+//               -1 * wires[msb_g->in].secret();  // Removed multiplication by -1
+//           auto alpha_bits = bitDecompose(alpha);
 
-          DummyShare<BoolRing> zero_share;
-          std::fill(zero_share.share_elements.begin(),
-                    zero_share.share_elements.end(), 0); //全部填0
+//           DummyShare<BoolRing> zero_share;
+//           std::fill(zero_share.share_elements.begin(),
+//                     zero_share.share_elements.end(), 0); //全部填0
 
-          //msb_circ为一个计算最高有效位的电路,为这个新电路进行预处理
-          std::vector<preprocg_ptr_t<BoolRing>> msb_gates(msb_circ.num_gates); // 新电路的，用来保存预计算好的RSS共享
-          std::vector<DummyShare<BoolRing>> msb_wires(msb_circ.num_gates); // 新电路的wire
+//           //msb_circ为一个计算最高有效位的电路,为这个新电路进行预处理
+//           std::vector<preprocg_ptr_t<BoolRing>> msb_gates(msb_circ.num_gates); // 新电路的，用来保存预计算好的RSS共享
+//           std::vector<DummyShare<BoolRing>> msb_wires(msb_circ.num_gates); // 新电路的wire
 
-          size_t inp_counter = 0;
-          //遍历电路msb_circ
-          for (const auto& msb_level : msb_circ.gates_by_level) {
-            for (const auto& msb_gate : msb_level) {
-              switch (msb_gate->type) {
-                case utils::GateType::kInp: {
-                  auto mask = zero_share;
-                  if (inp_counter < 64) { //小于64的都是输入
-                    mask = DummyShare<BoolRing>(alpha_bits[inp_counter], prg); //把第inp_counter个比特，共享成5个随机数的和
-                  }
-                  msb_wires[msb_gate->out] = mask; //第i bit的5个共享值
-                  msb_gates[msb_gate->out] = std::make_unique<PreprocGate<BoolRing>>(mask.getRSS(pid)); //4个共享值，作为输入保存在一个门中，即msb_gates
-                  inp_counter++;
-                  break;
-                }
+//           size_t inp_counter = 0;
+//           //遍历电路msb_circ
+//           for (const auto& msb_level : msb_circ.gates_by_level) {
+//             for (const auto& msb_gate : msb_level) {
+//               switch (msb_gate->type) {
+//                 case utils::GateType::kInp: {
+//                   auto mask = zero_share;
+//                   if (inp_counter < 64) { //小于64的都是输入
+//                     mask = DummyShare<BoolRing>(alpha_bits[inp_counter], prg); //把第inp_counter个比特，共享成5个随机数的和
+//                   }
+//                   msb_wires[msb_gate->out] = mask; //第i bit的5个共享值
+//                   msb_gates[msb_gate->out] = std::make_unique<PreprocGate<BoolRing>>(mask.getRSS(pid)); //4个共享值，作为输入保存在一个门中，即msb_gates
+//                   inp_counter++;
+//                   break;
+//                 }
 
-                case utils::GateType::kAdd: {
-                  const auto* g = static_cast<utils::FIn2Gate*>(msb_gate.get());
-                  msb_wires[g->out] = msb_wires[g->in1] + msb_wires[g->in2];
-                  msb_gates[g->out] = std::make_unique<PreprocGate<BoolRing>>(
-                      msb_wires[g->out].getRSS(pid));
-                  break;
-                }
+//                 case utils::GateType::kAdd: {
+//                   const auto* g = static_cast<utils::FIn2Gate*>(msb_gate.get());
+//                   msb_wires[g->out] = msb_wires[g->in1] + msb_wires[g->in2];
+//                   msb_gates[g->out] = std::make_unique<PreprocGate<BoolRing>>(
+//                       msb_wires[g->out].getRSS(pid));
+//                   break;
+//                 }
 
-                case utils::GateType::kMul: {
-                  const auto* g = static_cast<utils::FIn2Gate*>(msb_gate.get());
-                  msb_wires[g->out].randomize(prg);
-                  BoolRing prod = msb_wires[g->in1].secret() * msb_wires[g->in2].secret();
-                  auto prod_share = DummyShare<BoolRing>(prod, prg);
+//                 case utils::GateType::kMul: {
+//                   const auto* g = static_cast<utils::FIn2Gate*>(msb_gate.get());
+//                   msb_wires[g->out].randomize(prg);
+//                   BoolRing prod = msb_wires[g->in1].secret() * msb_wires[g->in2].secret();
+//                   auto prod_share = DummyShare<BoolRing>(prod, prg);
 
-                  msb_gates[g->out] =
-                      std::make_unique<PreprocMultGate<BoolRing>>(
-                          msb_wires[g->out].getRSS(pid),
-                          prod_share.getRSS(pid));
-                  break;
-                }
+//                   msb_gates[g->out] =
+//                       std::make_unique<PreprocMultGate<BoolRing>>(
+//                           msb_wires[g->out].getRSS(pid),
+//                           prod_share.getRSS(pid));
+//                   break;
+//                 }
 
-                default: {
-                  break;
-                }
-              }
-            }
-          }
+//                 default: {
+//                   break;
+//                 }
+//               }
+//             }
+//           }
 
-          const auto& out_mask = msb_wires[msb_circ.outputs[0]]; //一个MSB只有一个输出，out_mask代表输出线的掩码
+//           const auto& out_mask = msb_wires[msb_circ.outputs[0]]; //一个MSB只有一个输出，out_mask代表输出线的掩码
 
-          Ring alpha_msb = out_mask.secret().val();//Σα
-          DummyShare<Ring> mask_msb(alpha_msb, prg);
+//           Ring alpha_msb = out_mask.secret().val();//Σα
+//           DummyShare<Ring> mask_msb(alpha_msb, prg);
 
-          DummyShare<Ring> mask_w;
-          mask_w.randomize(prg);
+//           DummyShare<Ring> mask_w;
+//           mask_w.randomize(prg);
 
-          Ring alpha_w, alpha_btoa;
-          alpha_w = mask_w.secret();
+//           Ring alpha_w, alpha_btoa;
+//           alpha_w = mask_w.secret();
 
-          wires[msb_g->out] =
-              static_cast<Ring>(-1) * mask_msb + static_cast<Ring>(-2) * mask_w;
+//           wires[msb_g->out] =
+//               static_cast<Ring>(-1) * mask_msb + static_cast<Ring>(-2) * mask_w;
 
-          preproc.gates[msb_g->out] = std::make_unique<PreprocMsbGate<Ring>>(
-              wires[msb_g->out].getRSS(pid), std::move(msb_gates), //msb_gates尤为重要，他代表预计算好的MSB所有子门的预计算结果，有443个bool门
-              mask_msb.getRSS(pid), mask_w.getRSS(pid));
-          break;
-        }
+//           preproc.gates[msb_g->out] = std::make_unique<PreprocMsbGate<Ring>>(
+//               wires[msb_g->out].getRSS(pid), std::move(msb_gates), //msb_gates尤为重要，他代表预计算好的MSB所有子门的预计算结果，有443个bool门
+//               mask_msb.getRSS(pid), mask_w.getRSS(pid));
+//           break;
+//         }
 
-        case utils::GateType::kRelu: {
-          const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
-          auto mask_output_alpha = randomShareWithParty(id_, rgen_); //随机化输出值的α
+//         case utils::GateType::kRelu: {
+//           const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
+//           auto mask_output_alpha = randomShareWithParty(id_, rgen_); //随机化输出值的α
 
-          DummyShare<Ring> mask_mu_1; //随机化mu_1
-          mask_mu_1.randomize(prg);
-          auto mask_mu_1_share = mask_mu_1.getRSS(pid);
-          auto mask_in = preproc.gates[cmp_g->in]->mask;
+//           DummyShare<Ring> mask_mu_1; //随机化mu_1
+//           mask_mu_1.randomize(prg);
+//           auto mask_mu_1_share = mask_mu_1.getRSS(pid);
+//           auto mask_in = preproc.gates[cmp_g->in]->mask;
 
-          auto mask_prod = compute_prod_mask(mask_mu_1_share, mask_in); //直接把关键的prod=(Σα1) x (Σα2)的共享计算出来
+//           auto mask_prod = compute_prod_mask(mask_mu_1_share, mask_in); //直接把关键的prod=(Σα1) x (Σα2)的共享计算出来
 
-          DummyShare<Ring> mask_mu_2; //随机化mu_2
-          mask_mu_2.randomize(prg);
-          auto mask_mu_2_share = mask_mu_2.getRSS(pid);
+//           DummyShare<Ring> mask_mu_2; //随机化mu_2
+//           mask_mu_2.randomize(prg);
+//           auto mask_mu_2_share = mask_mu_2.getRSS(pid);
 
-          Ring beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
-          Ring beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
+//           Ring beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
+//           Ring beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
 
-          ReplicatedShare<Ring> prev_mask = mask_output_alpha;
-          mask_output_alpha +=  mask_mu_2_share;  //alpha提前加好，后续不用加了
+//           ReplicatedShare<Ring> prev_mask = mask_output_alpha;
+//           mask_output_alpha +=  mask_mu_2_share;  //alpha提前加好，后续不用加了
           
-          ReplicatedShare<Ring> mask_for_mul = randomShareWithParty(id_, rgen_); //随机化mu_2
+//           ReplicatedShare<Ring> mask_for_mul = randomShareWithParty(id_, rgen_); //随机化mu_2
 
-          //前面做了一次乘法，得到的结果是(x-y)大于0或者小于0，分别代表1和0，这里再做一次乘法，输入(x-y)，则输出relu的结果
-          auto mask_prod2 = compute_prod_mask(mask_output_alpha, mask_in); //(x-y)和比较结果z的α做乘法
+//           //前面做了一次乘法，得到的结果是(x-y)大于0或者小于0，分别代表1和0，这里再做一次乘法，输入(x-y)，则输出relu的结果
+//           auto mask_prod2 = compute_prod_mask(mask_output_alpha, mask_in); //(x-y)和比较结果z的α做乘法
 
-          preproc.gates[gate->out] = std::make_unique<PreprocReluGate<Ring>>(
-              mask_output_alpha, mask_prod, mask_mu_1_share, mask_mu_2_share, 
-              beta_mu_1, beta_mu_2, prev_mask, mask_prod2, mask_for_mul); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
-          break;
-        }
+//           preproc.gates[gate->out] = std::make_unique<PreprocReluGate<Ring>>(
+//               mask_output_alpha, mask_prod, mask_mu_1_share, mask_mu_2_share, 
+//               beta_mu_1, beta_mu_2, prev_mask, mask_prod2, mask_for_mul); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
+//           break;
+//         }
 
-        case utils::GateType::kCmp: {
-          /* The generation of sharing of mu_1 and mu_2 does not require communication, only local computation
-          so it is assumed here that there is a third-party generater, and the impact on performance can be ignored */
-          const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
-          auto mask_output_alpha = randomShareWithParty(id_, rgen_); //随机化输出值的α
+//         case utils::GateType::kCmp: {
+//           /* The generation of sharing of mu_1 and mu_2 does not require communication, only local computation
+//           so it is assumed here that there is a third-party generater, and the impact on performance can be ignored */
+//           const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
+//           auto mask_output_alpha = randomShareWithParty(id_, rgen_); //随机化输出值的α
 
-          DummyShare<Ring> mask_mu_1; //随机化mu_1
-          mask_mu_1.randomize(prg); //
-          auto mask_mu_1_share = mask_mu_1.getRSS(pid);
-          auto mask_in = preproc.gates[cmp_g->in]->mask;
+//           DummyShare<Ring> mask_mu_1; //随机化mu_1
+//           mask_mu_1.randomize(prg); //
+//           auto mask_mu_1_share = mask_mu_1.getRSS(pid);
+//           auto mask_in = preproc.gates[cmp_g->in]->mask;
 
-          auto mask_prod = compute_prod_mask(mask_mu_1_share, mask_in); //直接把关键的prod=(Σα1) x (Σα2)的共享计算出来
+//           auto mask_prod = compute_prod_mask(mask_mu_1_share, mask_in); //直接把关键的prod=(Σα1) x (Σα2)的共享计算出来
 
-          DummyShare<Ring> mask_mu_2; //随机化mu_2
-          mask_mu_2.randomize(prg);
-          auto mask_mu_2_share = mask_mu_2.getRSS(pid);
+//           DummyShare<Ring> mask_mu_2; //随机化mu_2
+//           mask_mu_2.randomize(prg);
+//           auto mask_mu_2_share = mask_mu_2.getRSS(pid);
 
-          Ring beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
-          Ring beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
+//           Ring beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
+//           Ring beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
 
-          ReplicatedShare<Ring> prev_mask = mask_output_alpha;
-          mask_output_alpha +=  mask_mu_2_share;  //alpha提前加好，后续不用加了
-          //除此之外，还有一个重要的操作，如果(x-y)>0，那么最终需要的α已经有了，但是β无法计算，所以我们需要预先计算好最终结果的β，否则计算不了。
+//           ReplicatedShare<Ring> prev_mask = mask_output_alpha;
+//           mask_output_alpha +=  mask_mu_2_share;  //alpha提前加好，后续不用加了
+//           //除此之外，还有一个重要的操作，如果(x-y)>0，那么最终需要的α已经有了，但是β无法计算，所以我们需要预先计算好最终结果的β，否则计算不了。
 
-          preproc.gates[gate->out] = std::make_unique<PreprocCmpGate<Ring>>(mask_output_alpha, mask_prod,
-              mask_mu_1_share, mask_mu_2_share, beta_mu_1, beta_mu_2, prev_mask); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
-          break;
-        }
+//           preproc.gates[gate->out] = std::make_unique<PreprocCmpGate<Ring>>(mask_output_alpha, mask_prod,
+//               mask_mu_1_share, mask_mu_2_share, beta_mu_1, beta_mu_2, prev_mask); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
+//           break;
+//         }
 
-        default: {
-          throw std::runtime_error("Invalid gate.");
-          break;
-        }
-      }
-    }
-  }
-  return preproc;
-}
+//         default: {
+//           throw std::runtime_error("Invalid gate.");
+//           break;
+//         }
+//       }
+//     }
+//   }
+//   return preproc;
+// }
 
 std::array<vector<Ring>, 6> OfflineEvaluator::reshare_gen_random_vector(int pid, RandGenPool& rgen, int array_length) {
   std::array<vector<Ring>, 6> result;
