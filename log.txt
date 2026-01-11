@@ -1,0 +1,83 @@
+--- Repetition 1 ---
+Start evaluating 
+End evaluating 
+time: 586.507359 ms
+sent: 1248 bytes
+If save the output: 1
+Saved data in online_lenet
+
+--- Repetition 2 ---
+Start evaluating 
+End evaluating 
+time: 441.015024 ms
+sent: 1248 bytes
+If save the output: 1
+Saved data in online_lenet
+
+--- Repetition 3 ---
+Start evaluating 
+End evaluating 
+time: 421.561585 ms
+sent: 1248 bytes
+If save the output: 1
+Saved data in online_lenet
+
+--- Repetition 4 ---
+Start evaluating 
+End evaluating 
+time: 426.611027 ms
+sent: 1248 bytes
+If save the output: 1
+Saved data in online_lenet
+
+--- Repetition 5 ---
+Start evaluating 
+End evaluating 
+time: 453.792569 ms
+sent: 1248 bytes
+If save the output: 1
+Saved data in online_lenet
+
+--- Repetition 6 ---
+Start evaluating 
+End evaluating 
+time: 417.384951 ms
+sent: 1248 bytes
+If save the output: 1
+Saved data in online_lenet
+
+--- Repetition 7 ---
+Start evaluating 
+End evaluating 
+time: 422.710306 ms
+sent: 1248 bytes
+If save the output: 1
+Saved data in online_lenet
+
+--- Repetition 8 ---
+Start evaluating 
+End evaluating 
+time: 421.760765 ms
+sent: 1248 bytes
+If save the output: 1
+Saved data in online_lenet
+
+--- Repetition 9 ---
+Start evaluating 
+End evaluating 
+time: 444.173237 ms
+sent: 1248 bytes
+If save the output: 1
+Saved data in online_lenet
+
+--- Repetition 10 ---
+Start evaluating 
+End evaluating 
+time: 413.480516 ms
+sent: 1248 bytes
+If save the output: 1
+Saved data in online_lenet
+
+Following is the memory: 
+--- Statistics ---
+peak_resident_set_size: 17711
