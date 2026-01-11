@@ -21,6 +21,7 @@ namespace bdata = boost::unit_test::data;
 
 constexpr int TEST_DATA_MAX_VAL = 1000;
 constexpr int SECURITY_PARAM = 128;
+const int thread_communication = 10;
 
 BOOST_AUTO_TEST_SUITE(online_evaluator)
 
@@ -41,7 +42,7 @@ BOOST_AUTO_TEST_CASE(reconstruct) {
       PreprocCircuit<Ring> preproc;
       LevelOrderedCircuit circ;
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  circ, SECURITY_PARAM, 1);
+                                  circ, SECURITY_PARAM, thread_communication);
       std::vector<ReplicatedShare<Ring>> shares(num_shares);
       for (size_t j = 0; j < num_shares; ++j) {
         shares[j] = dummy_shares[j].getRSS(i);
@@ -81,7 +82,7 @@ BOOST_DATA_TEST_CASE(no_op_circuit,
       emp::PRG prg(&seed, 0);
       auto preproc = OfflineEvaluator::dummy(level_circ, input_pid_map, SECURITY_PARAM, i, prg); //每个i需要预处理
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, thread_communication);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -118,7 +119,7 @@ BOOST_DATA_TEST_CASE(add_gate,
       auto preproc = OfflineEvaluator::dummy(level_circ, input_pid_map,
                                              SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, thread_communication);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -154,7 +155,7 @@ BOOST_DATA_TEST_CASE(sub_gate,
       auto preproc = OfflineEvaluator::dummy(level_circ, input_pid_map,
                                              SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, thread_communication);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -189,7 +190,7 @@ BOOST_DATA_TEST_CASE(const_add_gate,
       auto preproc = OfflineEvaluator::dummy(level_circ, input_pid_map,
                                              SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, thread_communication);
 
       return online_eval.evaluateCircuit(inputs);
       // vector<Ring> a(1,0);
@@ -226,7 +227,7 @@ BOOST_DATA_TEST_CASE(const_mul_gate,
       auto preproc = OfflineEvaluator::dummy(level_circ, input_pid_map,
                                              SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, thread_communication);
 
       return online_eval.evaluateCircuit(inputs);
       // vector<Ring> a(1,0);
@@ -265,7 +266,7 @@ BOOST_DATA_TEST_CASE(mul_gate,
       auto preproc = OfflineEvaluator::dummy(level_circ, input_pid_map,
                                              SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, thread_communication);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -312,7 +313,7 @@ BOOST_AUTO_TEST_CASE(dotp_gate) {
       auto preproc = OfflineEvaluator::dummy(level_circ, input_pid_map,
                                              SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, thread_communication);
 
       return online_eval.evaluateCircuit(input_map);
     }));
@@ -360,7 +361,7 @@ BOOST_AUTO_TEST_CASE(tr_dotp_gate) {
       auto preproc = OfflineEvaluator::dummy(level_circ, input_pid_map,
                                              SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, thread_communication);
 
       return online_eval.evaluateCircuit(input_map);
     }));
@@ -413,7 +414,7 @@ BOOST_DATA_TEST_CASE(depth_2_circuit,
       auto preproc = OfflineEvaluator::dummy(level_circ, input_pid_map,
                                              SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, thread_communication);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -454,7 +455,7 @@ BOOST_DATA_TEST_CASE(kCmp_gate, bdata::xrange(2), idx) {
       auto preproc = OfflineEvaluator::dummy(level_circ, input_pid_map,
                                              SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, thread_communication);
       return online_eval.evaluateCircuit(inputs);
     }));
   }
@@ -496,7 +497,7 @@ BOOST_DATA_TEST_CASE(relu_gate, bdata::xrange(2), idx) {
       auto preproc = OfflineEvaluator::dummy(level_circ, input_pid_map,
                                              SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, thread_communication);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -550,7 +551,7 @@ BOOST_AUTO_TEST_CASE(double_relu_gate) {
       auto preproc = OfflineEvaluator::dummy(level_circ, input_pid_map,
                                              SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, thread_communication);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -602,7 +603,7 @@ BOOST_DATA_TEST_CASE(multiple_inputs_same_party,
       auto preproc = OfflineEvaluator::dummy(level_circ, input_pid_map,
                                              SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, thread_communication);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -613,50 +614,5 @@ BOOST_DATA_TEST_CASE(multiple_inputs_same_party,
     BOOST_TEST(output == exp_output);
   }
 }
-
-// BOOST_AUTO_TEST_SUITE_END()
-
-// BOOST_AUTO_TEST_SUITE(bool_evaluator)
-
-// BOOST_AUTO_TEST_CASE(recon_shares) {
-//   const size_t num = 64;
-
-//   std::mt19937 gen(200);
-//   std::bernoulli_distribution distrib;
-//   std::vector<BoolRing> secrets(num);
-//   for (auto& secret : secrets) {
-//     secret = distrib(gen);
-//   }
-
-//   std::vector<std::future<std::vector<BoolRing>>> parties;
-//   for (int i = 0; i < 5; ++i) {
-//     parties.push_back(std::async(std::launch::async, [&, i]() {
-//       io::NetIOMP<5> network(i, 10000, nullptr, true);
-
-//       // Prepare dummy shares.
-//       emp::PRG prg(&emp::zero_block, 200);
-//       std::array<std::vector<BoolRing>, 4> recon_shares;
-//       for (auto& secret : secrets) {
-//         DummyShare<BoolRing> dshare(secret, prg);
-//         auto share = dshare.getRSS(i);
-//         for (size_t i = 0; i < 4; ++i) {
-//           recon_shares[i].push_back(share[i]);
-//         }
-//       }
-//       ImprovedJmp jump(i);
-//       ThreadPool tpool(1);
-//       auto res = BoolEvaluator::reconstruct(i, recon_shares, network, jump, tpool);
-
-//       return res;
-//     }));
-//   }
-
-//   for (auto& p : parties) {
-//     auto output = p.get();
-//     for (size_t i = 0; i < num; ++i) {
-//       BOOST_TEST(output[i] == secrets[i]);
-//     }
-//   }
-// }
 
 BOOST_AUTO_TEST_SUITE_END()

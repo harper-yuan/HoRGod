@@ -170,7 +170,7 @@ bpo::options_description programOptions() {
     ("pid,p", bpo::value<size_t>()->required(), "Party ID.")
     ("security-param", bpo::value<size_t>()->default_value(128), "Security parameter in bits.")
     ("cm-threads", bpo::value<size_t>()->default_value(10), "Number of threads for communication (recommended value is at least 10).")
-    ("cp-threads", bpo::value<size_t>()->default_value(1), "Number of threads for computation (recommended value close to number of cores).")
+    ("cp-threads", bpo::value<size_t>()->default_value(10), "Number of threads for computation (recommended value close to number of cores).")
     ("seed", bpo::value<size_t>()->default_value(200), "Value of the random seed.")
     ("net-config", bpo::value<std::string>(), "Path to JSON file containing network details of all parties.")
     ("localhost", bpo::bool_switch(), "All parties are on same machine.")

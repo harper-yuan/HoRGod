@@ -105,10 +105,10 @@ ctest
 ../run.sh ./benchmarks/offline_nn -n lenet
 
 ###############################################   MPC multiplication   ###############################################
-# Benchmark online phase for MPC multiplication.
+# Benchmark offline phase for MPC multiplication.
 ../run.sh ./benchmarks/offline_mpc_sub -g 1000 -d 1000 -t 1 #-g number of multiplication || -d depth of multiplication
 
-# Benchmark offline phase for MPC multiplication.
+# Benchmark online phase for MPC multiplication.
 ../run.sh ./benchmarks/online_mpc_sub -g 1000 -d 1000 -t 1 #-g number of multiplication || -d depth of multiplication
 
 

@@ -740,10 +740,10 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
     for (const auto& gate : level) {
       // --- LOGGING START: Pass 1 ---
       // 格式: [Level X/Y] [Phase] Gate: 本层第几个/本层总数 (Global: 全局总数) Type: 门类型
-      std::cout << "\r[Level " << current_level_idx << "/" << total_levels << "] [Prep    ] "
-                << "Gate: " << (++level_gate_idx) << "/" << level.size() 
-                << " (Global: " << (++global_gate_count) << ") "
-                << "Type: " << gate->type << "      " << std::flush;
+      // std::cout << "\r[Level " << current_level_idx << "/" << total_levels << "] [Prep    ] "
+      //           << "Gate: " << (++level_gate_idx) << "/" << level.size() 
+      //           << " (Global: " << (++global_gate_count) << ") "
+      //           << "Type: " << gate->type << "      " << std::flush;
       // --- LOGGING END ---
       switch (gate->type) {
         // 注意：原代码这里的 std::cout 放在 switch 后 case 前是无法执行的，已移除
@@ -858,9 +858,9 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
 
     // Network Round 1
     // 如果卡网络，这个log能看出来是卡在 Prepare 之后
-    std::cout <<  std::endl;
-    std::cout << "\r[Level " << current_level_idx << "] Communicating (R1)...          " << std::endl;
-    std::cout << "  - Jump Buffer Size: " << jump_.calculate_total_communication() <<"bytes" <<std::endl; 
+    // std::cout <<  std::endl;
+    // std::cout << "\r[Level " << current_level_idx << "] Communicating (R1)...          " << std::endl;
+    // std::cout << "  - Jump Buffer Size: " << jump_.calculate_total_communication() <<"bytes" <<std::endl; 
     jump_.communicate(*network_, *tpool_);
 
     // =================================================================
@@ -871,9 +871,9 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
 
     for (const auto& gate : level) {
       // --- LOGGING START: Pass 2 ---
-      std::cout << "\r[Level " << current_level_idx << "/" << total_levels << "] [Finalize] "
-                << "Gate: " << (++level_gate_idx) << "/" << level.size() 
-                << " Type: " << gate->type << "      " << std::flush;
+      // std::cout << "\r[Level " << current_level_idx << "/" << total_levels << "] [Finalize] "
+      //           << "Gate: " << (++level_gate_idx) << "/" << level.size() 
+      //           << " Type: " << gate->type << "      " << std::flush;
 
       
       // --- LOGGING END ---
@@ -915,7 +915,7 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
       }
     }
 
-    std::cout <<  std::endl;
+    // std::cout <<  std::endl;
     // Special handling for Truncation Round 2
     if (has_trdotp) {
       jump_.reset();
@@ -925,7 +925,7 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
         if(level_gate_idx > 1) break;
         if (gate->type == utils::GateType::kTrdotp) {
           // --- LOGGING START: Trunc Pass 1 ---
-          std::cout << "\r[Level " << current_level_idx << "] [Trunc P1] Gate: " << (++level_gate_idx) << "     " << std::flush;
+          // std::cout << "\r[Level " << current_level_idx << "] [Trunc P1] Gate: " << (++level_gate_idx) << "     " << std::flush;
           // -----------------------------------
           auto& state = trdotp_states[gate->out];
           for(int i=0; i<N; i++) {
@@ -934,9 +934,9 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
           }
         }
       }
-      std::cout << std::endl;
-      std::cout << "\r[Level " << current_level_idx << "] Communicating (R2-Trunc)...      " << std::endl;
-      std::cout << "  - Jump Buffer Size: " << jump_.calculate_total_communication() <<"bytes" <<std::endl;
+      // std::cout << std::endl;
+      // std::cout << "\r[Level " << current_level_idx << "] Communicating (R2-Trunc)...      " << std::endl;
+      // std::cout << "  - Jump Buffer Size: " << jump_.calculate_total_communication() <<"bytes" <<std::endl;
       jump_.communicate(*network_, *tpool_);
       
       batch_idx = 0;
@@ -945,7 +945,7 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
         if(level_gate_idx > 1) break;
         if (gate->type == utils::GateType::kTrdotp) {
           // --- LOGGING START: Trunc Pass 2 ---
-          std::cout << "\r[Level " << current_level_idx << "] [Trunc P2] Gate: " << (++level_gate_idx) << "     " << std::flush;
+          // std::cout << "\r[Level " << current_level_idx << "] [Trunc P2] Gate: " << (++level_gate_idx) << "     " << std::flush;
           // -----------------------------------
           auto& state = trdotp_states[gate->out];
           state.r.init_zero();
@@ -976,9 +976,9 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
       // --- LOGGING START: Pass 3 ---
       // Local 门通常处理非常快，如果觉得闪得太快看不清，可以只在特定间隔打印
       // 这里为了调试完整性，我依然每一步都打印
-      std::cout << "\r[Level " << current_level_idx << "/" << total_levels << "] [Local   ] "
-                << "Gate: " << (++level_gate_idx) << "/" << level.size() 
-                << " Type: " << gate->type << "      " << std::flush;
+      // std::cout << "\r[Level " << current_level_idx << "/" << total_levels << "] [Local   ] "
+      //           << "Gate: " << (++level_gate_idx) << "/" << level.size() 
+      //           << " Type: " << gate->type << "      " << std::flush;
       // --- LOGGING END ---
 
       switch (gate->type) {
@@ -1011,7 +1011,7 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
   }
   
   // 完成后换行
-  std::cout << "\nPre-processing Complete." << std::endl;
+  // std::cout << "\nPre-processing Complete." << std::endl;
   return preproc;
 }
 
