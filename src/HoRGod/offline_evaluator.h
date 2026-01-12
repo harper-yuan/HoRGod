@@ -74,6 +74,11 @@ class OfflineEvaluator {
   ReplicatedShare<Ring> compute_prod_mask_part1(ReplicatedShare<Ring> mask_in1, ReplicatedShare<Ring> mask_in2);
   void compute_prod_mask_part2(ReplicatedShare<Ring>& mask_prod, size_t idx);
   
+   void compute_prod_mask_part2(ReplicatedShare<Ring>& mask_prod, 
+                               std::map<std::tuple<int, int, int>, size_t>& counters);
+
+  void compute_prod_mask_dot_part2(ReplicatedShare<Ring>& mask_prod, 
+                                   std::map<std::tuple<int, int, int>, size_t>& counters);
 
   ReplicatedShare<Ring> compute_prod_mask_dot(vector<ReplicatedShare<Ring>> mask_in1, vector<ReplicatedShare<Ring>> mask_in2);
   ReplicatedShare<Ring> compute_prod_mask_dot_part1(vector<ReplicatedShare<Ring>> mask_in1_vec, vector<ReplicatedShare<Ring>> mask_in2_vec);

@@ -8,6 +8,7 @@ using Ring = uint64_t;
 constexpr uint64_t FRACTION = 16;
 constexpr size_t N = 64; //bit size of Ring, 64 bits
 constexpr int INPUT_PERMUTATION = 0; //bit size of Ring, 64 bits
+constexpr bool if_debug = false;
 
 class BoolRing {
   bool val_;

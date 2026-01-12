@@ -249,69 +249,69 @@ class NeuralNetwork {
     return std::move(nn);
   }
 
+//   static NeuralNetwork<R> lenetMNIST(size_t batch_size) {
+//   NeuralNetwork<R> nn;
+//   auto input = nn.newInput<4>({batch_size, 28, 28, 1});
+
+//   // --- 1. 卷积层规模随 k 变化 ---
+//   // 原版 k=20 -> 这里设为 k
+//   int k = 10;
+//   size_t conv1_filters = k;
+//   auto layer1_conv = nn.convolution(input, {5, 5}, conv1_filters, false);
+//   auto layer1_relu = nn.relu(layer1_conv);
+//   auto layer1_out = nn.averagePool(layer1_relu, {2, 2}, {2, 2});
+
+//   // 第二层卷积通常是第一层的 2.5 倍
+//   size_t conv2_filters = (size_t)(k * 2.5);
+//   if (conv2_filters < 1) conv2_filters = 1; // 确保至少有一个核
+
+//   auto layer2_conv = nn.convolution(layer1_out, {5, 5}, conv2_filters, false);
+//   auto layer2_relu = nn.relu(layer2_conv);
+//   auto layer2_out = nn.averagePool(layer2_relu, {2, 2}, {2, 2});
+
+//   // --- 2. 展平 ---
+//   auto layer2_flat = nn.flatten(layer2_out);
+
+//   // --- 3. 全连接层规模随 k 变化 ---
+//   // 原版 k=20 时对应 500, 所以系数大约是 25
+//   size_t hidden_dim = k * 25;
+//   if (hidden_dim < 10) hidden_dim = 10; // 保证基本宽度
+
+//   auto layer3_lin = nn.linear(layer2_flat, hidden_dim);
+//   auto layer3_out = nn.relu(layer3_lin);
+
+//   // 输出层固定为 10
+//   auto output = nn.linear(layer3_out, 10);
+//   nn.setOutput(output);
+
+//   return std::move(nn);
+// }
+
   static NeuralNetwork<R> lenetMNIST(size_t batch_size) {
-  NeuralNetwork<R> nn;
-  auto input = nn.newInput<4>({batch_size, 28, 28, 1});
+    NeuralNetwork<R> nn;
+    auto input = nn.newInput<4>({batch_size, 28, 28, 1});
 
-  // --- 1. 卷积层规模随 k 变化 ---
-  // 原版 k=20 -> 这里设为 k
-  int k = 5;
-  size_t conv1_filters = k;
-  auto layer1_conv = nn.convolution(input, {5, 5}, conv1_filters, false);
-  auto layer1_relu = nn.relu(layer1_conv);
-  auto layer1_out = nn.averagePool(layer1_relu, {2, 2}, {2, 2});
+    auto layer1_conv = nn.convolution(input, {5, 5}, 20, false);
+    auto layer1_relu = nn.relu(layer1_conv);
+    auto layer1_out = nn.averagePool(layer1_relu, {2, 2}, {2, 2});
 
-  // 第二层卷积通常是第一层的 2.5 倍
-  size_t conv2_filters = (size_t)(k * 2.5);
-  if (conv2_filters < 1) conv2_filters = 1; // 确保至少有一个核
+    auto layer2_conv = nn.convolution(layer1_out, {5, 5}, 50, false);
+    auto layer2_relu = nn.relu(layer2_conv);
+    auto layer2_out = nn.averagePool(layer2_relu, {2, 2}, {2, 2});
 
-  auto layer2_conv = nn.convolution(layer1_out, {5, 5}, conv2_filters, false);
-  auto layer2_relu = nn.relu(layer2_conv);
-  auto layer2_out = nn.averagePool(layer2_relu, {2, 2}, {2, 2});
+    // auto layer2_conv = nn.convolution(input, {5, 5}, 50, false);
+    // auto layer2_relu = nn.relu(layer2_conv);
+    // auto layer2_out = nn.averagePool(layer2_relu, {2, 2}, {2, 2});
 
-  // --- 2. 展平 ---
-  auto layer2_flat = nn.flatten(layer2_out);
+    auto layer2_flat = nn.flatten(layer2_out);
 
-  // --- 3. 全连接层规模随 k 变化 ---
-  // 原版 k=20 时对应 500, 所以系数大约是 25
-  size_t hidden_dim = k * 25;
-  if (hidden_dim < 10) hidden_dim = 10; // 保证基本宽度
+    auto layer3_lin = nn.linear(layer2_flat, 500);
+    auto layer3_out = nn.relu(layer3_lin);
 
-  auto layer3_lin = nn.linear(layer2_flat, hidden_dim);
-  auto layer3_out = nn.relu(layer3_lin);
+    auto output = nn.linear(layer3_out, 10);
+    nn.setOutput(output);
 
-  // 输出层固定为 10
-  auto output = nn.linear(layer3_out, 10);
-  nn.setOutput(output);
-
-  return std::move(nn);
-}
-
-  // static NeuralNetwork<R> lenetMNIST(size_t batch_size) {
-  //   NeuralNetwork<R> nn;
-  //   auto input = nn.newInput<4>({batch_size, 28, 28, 1});
-
-  //   auto layer1_conv = nn.convolution(input, {5, 5}, 20, false);
-  //   auto layer1_relu = nn.relu(layer1_conv);
-  //   auto layer1_out = nn.averagePool(layer1_relu, {2, 2}, {2, 2});
-
-  //   auto layer2_conv = nn.convolution(layer1_out, {5, 5}, 50, false);
-  //   auto layer2_relu = nn.relu(layer2_conv);
-  //   auto layer2_out = nn.averagePool(layer2_relu, {2, 2}, {2, 2});
-
-  //   // auto layer2_conv = nn.convolution(input, {5, 5}, 50, false);
-  //   // auto layer2_relu = nn.relu(layer2_conv);
-  //   // auto layer2_out = nn.averagePool(layer2_relu, {2, 2}, {2, 2});
-
-  //   auto layer2_flat = nn.flatten(layer2_out);
-
-  //   auto layer3_lin = nn.linear(layer2_flat, 500);
-  //   auto layer3_out = nn.relu(layer3_lin);
-
-  //   auto output = nn.linear(layer3_out, 10);
-  //   nn.setOutput(output);
-
-  //   return std::move(nn);
-  // }
+    return std::move(nn);
+  }
 };
 }  // namespace HoRGod::utils

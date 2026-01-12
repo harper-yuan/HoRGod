@@ -425,6 +425,67 @@ ReplicatedShare<Ring> OfflineEvaluator::compute_prod_mask_dot(vector<ReplicatedS
   return mask_prod;
 }
 
+void OfflineEvaluator::compute_prod_mask_dot_part2(ReplicatedShare<Ring>& mask_prod, 
+                                                   std::map<std::tuple<int, int, int>, size_t>& counters) {
+  for(int i = 0; i<5; i++) {
+    for (int j = i+1; j<5; j++) {
+      if (i == id_ || j == id_) {
+        auto [min, mid, max] = findRemainingNumbers(i, j);
+        if(i == id_) { //如果是参与方l
+          // 获取当前信道的独立计数器
+          auto key = std::make_tuple(min, mid, max);
+          size_t& local_idx = counters[key];
+
+          auto alpha_x_y_i_j_mask = jshShare(id_, rgen_, min, mid, max);
+          const Ring *x_m_vec = reinterpret_cast<const Ring*>(jump_.getValues(min, mid, max).data());
+          
+          // 使用局部索引取值，并自增
+          Ring x_m = x_m_vec[local_idx++]; 
+          
+          alpha_x_y_i_j_mask[idxFromSenderAndReceiver(id_, j)] = x_m; //j就对应x_m中的m
+          //自己把最终结果加上
+          mask_prod += alpha_x_y_i_j_mask;
+        }
+        else if(j == id_) { //如果是参与方m
+          auto alpha_x_y_i_j_mask = jshShare(id_, rgen_, min, mid, max);
+          //自己把最终结果加上
+          mask_prod += alpha_x_y_i_j_mask;
+        }
+      }
+    }
+  }
+}
+void OfflineEvaluator::compute_prod_mask_part2(ReplicatedShare<Ring>& mask_prod, 
+                                               std::map<std::tuple<int, int, int>, size_t>& counters) {
+  for(int i = 0; i<5; i++) {
+    for (int j = i+1; j<5; j++) {
+      if (i == id_ || j == id_) {
+        auto [min, mid, max] = findRemainingNumbers(i, j);
+        if(i == id_) { //如果是参与方l，那么需要用通信协议来更新x_m
+          // 获取当前信道的独立计数器
+          auto key = std::make_tuple(min, mid, max);
+          size_t& local_idx = counters[key];
+
+          auto alpha_x_y_i_j_mask = jshShare(id_, rgen_, min, mid, max);
+          const Ring *x_m_vec = reinterpret_cast<const Ring*>(jump_.getValues(min, mid, max).data());
+          
+          // 使用局部索引取值，并自增
+          Ring x_m = x_m_vec[local_idx++]; 
+          
+          alpha_x_y_i_j_mask[idxFromSenderAndReceiver(id_, j)] = x_m; //j就对应x_m中的m
+          //自己把最终结果加上
+          mask_prod += alpha_x_y_i_j_mask;
+        }
+        else if(j == id_) { //如果是参与方m
+          auto alpha_x_y_i_j_mask = jshShare(id_, rgen_, min, mid, max);
+          //自己把最终结果加上
+          mask_prod += alpha_x_y_i_j_mask;
+        }
+      }
+    }
+  }
+}
+
 
 ReplicatedShare<Ring> OfflineEvaluator::compute_prod_mask_dot_part1(vector<ReplicatedShare<Ring>> mask_in1_vec, vector<ReplicatedShare<Ring>> mask_in2_vec) {
   ReplicatedShare<Ring> mask_prod;
@@ -740,10 +801,12 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
     for (const auto& gate : level) {
       // --- LOGGING START: Pass 1 ---
       // 格式: [Level X/Y] [Phase] Gate: 本层第几个/本层总数 (Global: 全局总数) Type: 门类型
-      // std::cout << "\r[Level " << current_level_idx << "/" << total_levels << "] [Prep    ] "
-      //           << "Gate: " << (++level_gate_idx) << "/" << level.size() 
-      //           << " (Global: " << (++global_gate_count) << ") "
-      //           << "Type: " << gate->type << "      " << std::flush;
+      if(if_debug) {
+        std::cout << "\r[Level " << current_level_idx << "/" << total_levels << "] [Prep    ] "
+                  << "Gate: " << (++level_gate_idx) << "/" << level.size() 
+                  << " (Global: " << (++global_gate_count) << ") "
+                  << "Type: " << gate->type << "      " << std::flush;
+      }
       // --- LOGGING END ---
       switch (gate->type) {
         // 注意：原代码这里的 std::cout 放在 switch 后 case 前是无法执行的，已移除
@@ -858,42 +921,38 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
 
     // Network Round 1
     // 如果卡网络，这个log能看出来是卡在 Prepare 之后
-    // std::cout <<  std::endl;
-    // std::cout << "\r[Level " << current_level_idx << "] Communicating (R1)...          " << std::endl;
-    // std::cout << "  - Jump Buffer Size: " << jump_.calculate_total_communication() <<"bytes" <<std::endl; 
+    if(if_debug) {
+      std::cout <<  std::endl;
+      std::cout << "\r[Level " << current_level_idx << "] Communicating (R1)...          " << std::endl;
+      std::cout << "  - Jump Buffer Size: " << jump_.calculate_total_communication() <<"bytes" <<std::endl; 
+    }
     jump_.communicate(*network_, *tpool_);
 
     // =================================================================
     // Pass 2: Finalize Complex Gates (except Trdotp part 2)
     // =================================================================
-    size_t batch_idx = 0;
-    level_gate_idx = 0; // 重置本层计数
+    // 定义计数器 Map，用于替代 batch_idx
+    std::map<std::tuple<int, int, int>, size_t> counters;
+    
+    // 注意：我删除了 level_gate_idx 相关的 break 判断，那个会导致大网络下计算错误
 
     for (const auto& gate : level) {
-      // --- LOGGING START: Pass 2 ---
-      // std::cout << "\r[Level " << current_level_idx << "/" << total_levels << "] [Finalize] "
-      //           << "Gate: " << (++level_gate_idx) << "/" << level.size() 
-      //           << " Type: " << gate->type << "      " << std::flush;
-
-      
-      // --- LOGGING END ---
-
       if (gate->type == utils::GateType::kMul) {
         auto& mask_prod = mul_states[gate->out];
-        compute_prod_mask_part2(mask_prod, batch_idx++);
+        compute_prod_mask_part2(mask_prod, counters); // 传入 counters
         preproc.gates[gate->out] = std::make_unique<PreprocMultGate<Ring>>(
             randomShareWithParty(id_, rgen_), mask_prod);
       }
       else if (gate->type == utils::GateType::kDotprod) {
         auto& mask_prod = dot_states[gate->out];
-        compute_prod_mask_dot_part2(mask_prod, batch_idx++);
+        compute_prod_mask_dot_part2(mask_prod, counters); // 传入 counters
         preproc.gates[gate->out] = std::make_unique<PreprocDotpGate<Ring>>(
             randomShareWithParty(id_, rgen_), mask_prod);
       }
       else if (gate->type == utils::GateType::kRelu) {
         auto& state = relu_states[gate->out];
-        compute_prod_mask_part2(state.mask_prod, batch_idx++);  
-        compute_prod_mask_part2(state.mask_prod2, batch_idx++); 
+        compute_prod_mask_part2(state.mask_prod, counters);   // 传入 counters
+        compute_prod_mask_part2(state.mask_prod2, counters);  // 传入 counters
         
         preproc.gates[gate->out] = std::make_unique<PreprocReluGate<Ring>>(
             state.mask_output_alpha, state.mask_prod, state.mask_mu_1, state.mask_mu_2,
@@ -901,7 +960,7 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
       }
       else if (gate->type == utils::GateType::kCmp) {
         auto& state = cmp_states[gate->out];
-        compute_prod_mask_part2(state.mask_prod, batch_idx++);
+        compute_prod_mask_part2(state.mask_prod, counters); // 传入 counters
         preproc.gates[gate->out] = std::make_unique<PreprocCmpGate<Ring>>(
             state.mask_output_alpha, state.mask_prod, state.mask_mu_1, state.mask_mu_2,
             state.beta_mu_1, state.beta_mu_2, state.prev_mask);
@@ -909,24 +968,19 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
       else if (gate->type == utils::GateType::kTrdotp) {
         auto& state = trdotp_states[gate->out];
         for(int i=0; i<N; i++) {
-          compute_prod_mask_part2(state.r1_times_r2_masks[i], batch_idx++);
+          compute_prod_mask_part2(state.r1_times_r2_masks[i], counters); // 传入 counters
         }
-        compute_prod_mask_dot_part2(state.main_dot_mask, batch_idx++);
+        compute_prod_mask_dot_part2(state.main_dot_mask, counters); // 传入 counters
       }
     }
 
-    // std::cout <<  std::endl;
     // Special handling for Truncation Round 2
     if (has_trdotp) {
       jump_.reset();
       
-      level_gate_idx = 0; // 重置计数
       for (const auto& gate : level) {
-        if(level_gate_idx > 1) break;
+        // 删除了 potential bug: if(level_gate_idx > 1) break;
         if (gate->type == utils::GateType::kTrdotp) {
-          // --- LOGGING START: Trunc Pass 1 ---
-          // std::cout << "\r[Level " << current_level_idx << "] [Trunc P1] Gate: " << (++level_gate_idx) << "     " << std::flush;
-          // -----------------------------------
           auto& state = trdotp_states[gate->out];
           for(int i=0; i<N; i++) {
             auto r1_xor_r2 = state.r1_bits_masks[i] + state.r2_bits_masks[i] - state.r1_times_r2_masks[i].cosnt_mul(2);
@@ -934,25 +988,21 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
           }
         }
       }
-      // std::cout << std::endl;
-      // std::cout << "\r[Level " << current_level_idx << "] Communicating (R2-Trunc)...      " << std::endl;
-      // std::cout << "  - Jump Buffer Size: " << jump_.calculate_total_communication() <<"bytes" <<std::endl;
+      
       jump_.communicate(*network_, *tpool_);
       
-      batch_idx = 0;
-      level_gate_idx = 0;
+      // 重置计数器，因为这是新的一轮通信
+      counters.clear();
+      
       for (const auto& gate : level) {
-        if(level_gate_idx > 1) break;
+        // 删除了 potential bug: if(level_gate_idx > 1) break;
         if (gate->type == utils::GateType::kTrdotp) {
-          // --- LOGGING START: Trunc Pass 2 ---
-          // std::cout << "\r[Level " << current_level_idx << "] [Trunc P2] Gate: " << (++level_gate_idx) << "     " << std::flush;
-          // -----------------------------------
           auto& state = trdotp_states[gate->out];
           state.r.init_zero();
           state.r_trunted_d.init_zero();
           
           for(int i=0; i<N; i++) {
-            compute_prod_mask_part2(state.c_times_r3_masks[i], batch_idx++);
+            compute_prod_mask_part2(state.c_times_r3_masks[i], counters); // 传入 counters
             auto r1_xor_r2 = state.r1_bits_masks[i] + state.r2_bits_masks[i] - state.r1_times_r2_masks[i].cosnt_mul(2);
             auto bit_val = r1_xor_r2 + state.r3_bits_masks[i] - state.c_times_r3_masks[i].cosnt_mul(2);
 
@@ -976,9 +1026,11 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
       // --- LOGGING START: Pass 3 ---
       // Local 门通常处理非常快，如果觉得闪得太快看不清，可以只在特定间隔打印
       // 这里为了调试完整性，我依然每一步都打印
-      // std::cout << "\r[Level " << current_level_idx << "/" << total_levels << "] [Local   ] "
-      //           << "Gate: " << (++level_gate_idx) << "/" << level.size() 
-      //           << " Type: " << gate->type << "      " << std::flush;
+      if(if_debug) {
+      std::cout << "\r[Level " << current_level_idx << "/" << total_levels << "] [Local   ] "
+                << "Gate: " << (++level_gate_idx) << "/" << level.size() 
+                << " Type: " << gate->type << "      " << std::flush;
+      }
       // --- LOGGING END ---
 
       switch (gate->type) {
@@ -1011,7 +1063,8 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
   }
   
   // 完成后换行
-  // std::cout << "\nPre-processing Complete." << std::endl;
+  if(if_debug)
+  std::cout << "\nPre-processing Complete." << std::endl;
   return preproc;
 }
 
